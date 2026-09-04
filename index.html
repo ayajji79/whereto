@@ -1,0 +1,1152 @@
+<!doctype html>
+<html lang="ko">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Travel Blog AI Dashboard</title>
+    <meta name="description" content="여행 블로그 올인원 콘텐츠 기획 및 프롬프트 대시보드 - Google Sheets & Gemini 연동 지원" />
+    <meta property="og:title" content="Travel Blog AI Dashboard" />
+    <meta property="og:description" content="여행 블로그 올인원 콘텐츠 기획 및 프롬프트 대시보드 - Google Sheets & Gemini 연동 지원" />
+    <meta property="og:type" content="website" />
+    <meta name="twitter:card" content="summary_large_image" />
+
+    <!-- Tailwind CSS CDN -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script>
+      tailwind.config = {
+        theme: {
+          extend: {
+            fontFamily: {
+              sans: ['Pretendard', '-apple-system', 'BlinkMacSystemFont', 'Segoe UI', 'Roboto', 'sans-serif'],
+            },
+            colors: {
+              brand: {
+                50: '#eff6ff',
+                100: '#dbeafe',
+                500: '#3b82f6',
+                600: '#2563eb',
+                700: '#1d4ed8',
+              }
+            }
+          }
+        }
+      }
+    </script>
+
+    <!-- Font Awesome Icons 6 -->
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css" />
+    
+    <!-- Pretendard Font -->
+    <link rel="stylesheet" as="style" crossorigin href="https://cdn.jsdelivr.net/gh/orioncactus/pretendard@v1.3.9/dist/web/static/pretendard.min.css" />
+
+    <style>
+      body {
+        font-family: 'Pretendard', -apple-system, sans-serif;
+      }
+      /* Custom scrollbar */
+      ::-webkit-scrollbar {
+        width: 6px;
+        height: 6px;
+      }
+      ::-webkit-scrollbar-track {
+        background: #f1f5f9;
+      }
+      ::-webkit-scrollbar-thumb {
+        background: #cbd5e1;
+        border-radius: 9999px;
+      }
+      ::-webkit-scrollbar-thumb:hover {
+        background: #94a3b8;
+      }
+    </style>
+  </head>
+  <body class="bg-slate-50 text-slate-900 antialiased min-h-screen flex flex-col">
+
+    <!-- 1. Top Navbar (Always Fixed at Top, Consistent Height & Layout) -->
+    <header class="bg-white/95 backdrop-blur-md border-b border-slate-200/90 sticky top-0 z-40 shadow-2xs">
+      <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 h-16 flex items-center justify-between gap-3">
+        <!-- Brand Logo & Title -->
+        <a href="#studio" onclick="switchView('studio'); return false;" id="brand-home-link"
+          title="스튜디오 홈으로 이동"
+          class="flex items-center gap-2.5 group cursor-pointer focus:outline-none rounded-xl p-1 -ml-1 transition-all shrink-0">
+          <div class="w-9 h-9 sm:w-10 sm:h-10 rounded-xl bg-gradient-to-tr from-blue-600 to-indigo-600 flex items-center justify-center text-white shadow-sm shadow-blue-500/20 group-hover:scale-105 transition-transform">
+            <i class="fa-solid fa-compass text-base sm:text-lg"></i>
+          </div>
+          <div class="min-w-0">
+            <div class="flex items-center gap-1.5">
+              <span class="text-sm sm:text-base font-extrabold text-slate-900 group-hover:text-blue-600 tracking-tight transition-colors truncate">여행 블로그 AI 스튜디오</span>
+              <span class="hidden md:inline-block px-1.5 py-0.5 text-[10px] font-bold rounded-md bg-blue-50 text-blue-700 border border-blue-200">v1.3</span>
+            </div>
+            <p class="text-[10px] text-slate-500 hidden xl:block">기획부터 SEO·프롬프트·SNS·시트 연동까지 올인원 대시보드</p>
+          </div>
+        </a>
+
+        <!-- Main Navigation Tabs (페이지 이동 탭 - 팝업 없이 페이지 전환) -->
+        <nav aria-label="메인 페이지 메뉴" class="flex items-center gap-1 sm:gap-1.5 bg-slate-100 p-1 rounded-xl border border-slate-200/80">
+          <button id="nav-btn-studio" onclick="switchView('studio')"
+            title="리스트형 코스 기획 및 글 작성 스튜디오"
+            class="nav-tab-btn flex items-center gap-1.5 px-3 py-1.5 text-xs font-bold rounded-lg transition-all bg-blue-600 text-white shadow-xs">
+            <i class="fa-solid fa-wand-magic-sparkles text-xs"></i>
+            <span>스튜디오</span>
+          </button>
+          <button id="nav-btn-history" onclick="switchView('history')"
+            title="작업 히스토리 보관함 페이지로 이동"
+            class="nav-tab-btn flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold rounded-lg transition-all text-slate-600 hover:text-slate-900 hover:bg-white/80">
+            <i class="fa-solid fa-clock-rotate-left text-xs"></i>
+            <span>히스토리</span>
+          </button>
+          <button id="nav-btn-favorites" onclick="switchView('favorites')"
+            title="블로거 필수 즐겨찾기 허브 페이지로 이동"
+            class="nav-tab-btn flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold rounded-lg transition-all text-slate-600 hover:text-slate-900 hover:bg-white/80">
+            <i class="fa-solid fa-star text-xs"></i>
+            <span>즐겨찾기</span>
+          </button>
+          <button id="nav-btn-settings" onclick="switchView('settings')"
+            title="Gemini AI 및 스프레드시트 설정 페이지로 이동"
+            class="nav-tab-btn flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold rounded-lg transition-all text-slate-600 hover:text-slate-900 hover:bg-white/80">
+            <i class="fa-solid fa-gear text-xs"></i>
+            <span>설정</span>
+          </button>
+        </nav>
+
+        <!-- Right Side: Status Badges & Action Buttons -->
+        <div class="flex items-center gap-2 shrink-0">
+          <!-- Live Badges (클릭 시 바로 설정 페이지로 이동) -->
+          <div class="hidden lg:flex items-center gap-1.5">
+            <div id="gemini-status-badge" onclick="switchView('settings')" title="클릭하여 AI 모델 및 API 키 설정 페이지로 이동"
+              class="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-xs font-semibold bg-slate-100 text-slate-600 cursor-pointer hover:bg-slate-200 transition-colors">
+              <span class="w-2 h-2 rounded-full bg-slate-400"></span> AI 확인 중
+            </div>
+            <div id="sheets-status-badge" onclick="switchView('settings')" title="클릭하여 구글 스프레드시트 설정 페이지로 이동"
+              class="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-xs font-semibold bg-slate-100 text-slate-600 cursor-pointer hover:bg-slate-200 transition-colors">
+              <span class="w-2 h-2 rounded-full bg-slate-400"></span> 시트 확인 중
+            </div>
+          </div>
+
+          <!-- Download Single HTML Button -->
+          <button id="btn-download-single-html" 
+            title="현재 앱을 완벽한 단일 HTML 파일로 저장하여 로컬에서 바로 실행"
+            class="hidden sm:flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold rounded-lg bg-slate-900 hover:bg-slate-800 text-white shadow-xs transition-colors">
+            <i class="fa-solid fa-download text-xs"></i>
+            <span class="hidden xl:inline">HTML 다운로드</span>
+          </button>
+        </div>
+      </div>
+    </header>
+
+    <!-- Main Content Area -->
+    <main class="flex-1 max-w-7xl w-full mx-auto px-4 sm:px-6 lg:px-8 py-6">
+
+      <!-- ================= PAGE VIEW 1: 스튜디오 (코스 기획 & 본문 작성) ================= -->
+      <div id="view-studio" class="page-view space-y-6">
+
+        <!-- 3. Workflow Stepper -->
+        <nav aria-label="진행 단계" class="bg-white p-3 sm:p-4 rounded-2xl border border-slate-200/80 shadow-xs">
+        <div class="grid grid-cols-2 md:grid-cols-4 gap-2 sm:gap-3">
+          <button id="step-indicator-1" onclick="goToStep(1)" class="flex items-center gap-2 px-3.5 py-2 rounded-xl text-xs sm:text-sm font-bold bg-blue-600 text-white shadow-xs">
+            <span class="w-5 h-5 rounded-full bg-white/20 flex items-center justify-center text-[11px]">1</span>
+            <span class="truncate">리스트 장소 & 코스 기획</span>
+          </button>
+          <button id="step-indicator-2" onclick="goToStep(2)" class="flex items-center gap-2 px-3.5 py-2 rounded-xl text-xs sm:text-sm font-medium bg-slate-100 text-slate-600 hover:bg-slate-200 transition-colors">
+            <span class="w-5 h-5 rounded-full bg-slate-300 flex items-center justify-center text-[11px] text-slate-700">2</span>
+            <span class="truncate">통합 SEO & 비주얼 에셋</span>
+          </button>
+          <button id="step-indicator-3" onclick="goToStep(3)" class="flex items-center gap-2 px-3.5 py-2 rounded-xl text-xs sm:text-sm font-medium bg-slate-100 text-slate-600 hover:bg-slate-200 transition-colors">
+            <span class="w-5 h-5 rounded-full bg-slate-300 flex items-center justify-center text-[11px] text-slate-700">3</span>
+            <span class="truncate">톤앤매너 & 마스터 프롬프트</span>
+          </button>
+          <button id="step-indicator-4" onclick="goToStep(4)" class="flex items-center gap-2 px-3.5 py-2 rounded-xl text-xs sm:text-sm font-medium bg-slate-100 text-slate-600 hover:bg-slate-200 transition-colors">
+            <span class="w-5 h-5 rounded-full bg-slate-300 flex items-center justify-center text-[11px] text-slate-700">4</span>
+            <span class="truncate">본문 검수 & SNS 가공</span>
+          </button>
+        </div>
+      </nav>
+
+      <!-- ─── STEP 1 PANEL: 리스트형 장소 & 코스 기획 ─── -->
+      <section id="step-panel-1" class="space-y-6">
+        <!-- Search Controls Card -->
+        <div class="bg-white p-5 sm:p-6 rounded-2xl border border-slate-200/80 shadow-xs">
+          <div class="flex flex-col md:flex-row items-stretch md:items-end gap-4">
+            <!-- Location Input -->
+            <div class="flex-1 space-y-2">
+              <label class="block text-xs font-bold text-slate-700 uppercase tracking-wider">
+                <i class="fa-solid fa-map-pin text-rose-500 mr-1"></i> 포스팅 대상 여행 지역 (도시, 권역, 명소)
+              </label>
+              <div class="relative">
+                <input id="location-input" type="text" value="제주도" placeholder="예: 제주도, 오사카, 도쿄, 방콕, 다낭, 후쿠오카, 파리, 경주, 강릉"
+                  class="w-full px-4 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-sm font-medium focus:bg-white focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-600 transition-all">
+              </div>
+            </div>
+
+            <!-- Theme Dropdown -->
+            <div class="w-full md:w-72 space-y-2">
+              <label class="block text-xs font-bold text-slate-700 uppercase tracking-wider">
+                <i class="fa-solid fa-tag text-blue-500 mr-1"></i> 나들이/데이트 & 여행 테마
+              </label>
+              <select id="theme-select" class="w-full px-3 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-sm font-medium focus:bg-white focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-600 transition-all">
+                <optgroup label="✨ 일상 & 주말 당일 나들이 / 연인 데이트">
+                  <option value="연인과 감성 데이트" selected>💖 연인과 감성 데이트 (분위기 맛집 + 감성카페 + 인생샷)</option>
+                  <option value="주말 힐링 나들이">🌿 주말 힐링 나들이 & 산책 (공원/숲 + 여유로운 브런치)</option>
+                  <option value="하루 알짜 당일치기 코스">⚡ 하루 알짜 당일치기 코스 (오전 관광 + 점심 맛집 + 오후 카페)</option>
+                  <option value="감성 핫플 드라이브">🚗 감성 핫플 드라이브 (탁 트인 뷰 + 대형 베이커리 카페)</option>
+                  <option value="퇴근 후 저녁 나들이 & 야경">🌙 퇴근 후 저녁 나들이 & 야경 데이트 (심야 맛집 + 야경 명소)</option>
+                  <option value="비 오는 날 실내 감성 투어">☔ 비 오는 날 실내 감성 투어 (실내 전시/미술관 + 온실카페)</option>
+                  <option value="아이/부모님 동반 가족 나들이">👨‍👩‍👧 아이/부모님 동반 가족 나들이 (체험/자연 + 편안한 식당)</option>
+                </optgroup>
+                <optgroup label="🧳 1박 2일 / 2박 3일 힐링 여행">
+                  <option value="1박 2일 알찬 주말 여행">🧳 1박 2일 알찬 주말 여행 (권역별 핵심 동선 분배)</option>
+                  <option value="2박 3일 이상 완전 정복">🗺️ 2박 3일 이상 완전 정복 여행 (명소 & 로컬 식도락)</option>
+                  <option value="실속 뚜벅이 & 로컬 맛집 탐방">🚶 실속 뚜벅이 & 로컬 맛집 탐방 (대중교통/도보 최적화)</option>
+                </optgroup>
+              </select>
+            </div>
+
+            <!-- Search Button -->
+            <button id="btn-search-places" onclick="handleSearchPlaces(true)" 
+              class="px-5 py-2.5 bg-blue-600 hover:bg-blue-700 text-white font-bold text-sm rounded-xl shadow-xs transition-all flex items-center justify-center gap-2 shrink-0">
+              <i class="fa-solid fa-wand-magic-sparkles"></i>
+              <span>상세 장소 데이터 탐색</span>
+            </button>
+          </div>
+
+          <!-- Quick Chips for Popular Destinations -->
+          <div class="mt-4 pt-3 border-t border-slate-100 flex items-center gap-2 flex-wrap text-xs">
+            <span class="font-semibold text-slate-400 text-[11px]">추천 핫플레이스 / 여행지:</span>
+            <button onclick="document.getElementById('location-input').value='서울 성수동'; handleSearchPlaces(true);" class="px-2.5 py-1 rounded-md bg-rose-50 hover:bg-rose-100 text-rose-700 font-medium transition-colors">서울 성수 데이트</button>
+            <button onclick="document.getElementById('location-input').value='서울 연남동'; handleSearchPlaces(true);" class="px-2.5 py-1 rounded-md bg-rose-50 hover:bg-rose-100 text-rose-700 font-medium transition-colors">연남/망원 나들이</button>
+            <button onclick="document.getElementById('location-input').value='제주도'; handleSearchPlaces(true);" class="px-2.5 py-1 rounded-md bg-slate-100 hover:bg-blue-50 hover:text-blue-600 text-slate-600 transition-colors">제주</button>
+            <button onclick="document.getElementById('location-input').value='강릉'; handleSearchPlaces(true);" class="px-2.5 py-1 rounded-md bg-slate-100 hover:bg-blue-50 hover:text-blue-600 text-slate-600 transition-colors">강릉 바다 나들이</button>
+            <button onclick="document.getElementById('location-input').value='부산 해운대'; handleSearchPlaces(true);" class="px-2.5 py-1 rounded-md bg-slate-100 hover:bg-blue-50 hover:text-blue-600 text-slate-600 transition-colors">부산 해운대</button>
+            <button onclick="document.getElementById('location-input').value='경주 황리단길'; handleSearchPlaces(true);" class="px-2.5 py-1 rounded-md bg-slate-100 hover:bg-blue-50 hover:text-blue-600 text-slate-600 transition-colors">경주 황리단길</button>
+            <button onclick="document.getElementById('location-input').value='오사카'; handleSearchPlaces(true);" class="px-2.5 py-1 rounded-md bg-slate-100 hover:bg-blue-50 hover:text-blue-600 text-slate-600 transition-colors">오사카</button>
+            <button onclick="document.getElementById('location-input').value='도쿄'; handleSearchPlaces(true);" class="px-2.5 py-1 rounded-md bg-slate-100 hover:bg-blue-50 hover:text-blue-600 text-slate-600 transition-colors">도쿄</button>
+            <button onclick="document.getElementById('location-input').value='후쿠오카'; handleSearchPlaces(true);" class="px-2.5 py-1 rounded-md bg-slate-100 hover:bg-blue-50 hover:text-blue-600 text-slate-600 transition-colors">후쿠오카</button>
+          </div>
+
+          <!-- Naver Map Real-time Verification Banner -->
+          <div class="mt-3 p-3 bg-emerald-50/70 border border-emerald-200/80 rounded-xl flex flex-col sm:flex-row items-start sm:items-center justify-between gap-2.5 text-xs text-emerald-950">
+            <div class="flex items-center gap-2">
+              <span class="w-6 h-6 rounded-lg bg-emerald-600 text-white flex items-center justify-center shrink-0 text-xs shadow-2xs font-bold">
+                <i class="fa-solid fa-map-location-dot"></i>
+              </span>
+              <div>
+                <strong class="font-extrabold text-emerald-900">네이버 지도 실시간 검증 & 리뷰 연동</strong>
+                <p class="text-[11px] text-emerald-800 leading-tight">음식점과 카페는 네이버 플레이스의 실제 방문자 리뷰·저장수가 핵심입니다. 추천 카드마다 원클릭 네이버지도 검증 링크를 제공합니다.</p>
+              </div>
+            </div>
+            <span class="text-[10px] font-bold px-2 py-0.5 rounded-md bg-white border border-emerald-300 text-emerald-700 shrink-0 self-end sm:self-auto shadow-2xs">
+              <i class="fa-solid fa-shield-halved text-emerald-600 mr-1"></i>네이버 실시간 리뷰 대조 지원
+            </span>
+          </div>
+        </div>
+
+        <!-- ─── SELECTED COURSE BASKET (리스트형 글쓰기 핵심 바스켓) ─── -->
+        <div id="selected-course-panel" class="bg-gradient-to-r from-slate-900 via-indigo-950 to-slate-900 text-white p-5 sm:p-6 rounded-2xl shadow-lg border border-slate-800 transition-all">
+          <div class="flex flex-col lg:flex-row lg:items-center justify-between gap-4 pb-4 border-b border-white/10">
+            <div class="space-y-1">
+              <div class="flex items-center gap-2">
+                <span class="px-2.5 py-0.5 rounded-full text-[11px] font-extrabold bg-blue-500/20 text-blue-300 border border-blue-400/30">
+                  <i class="fa-solid fa-list-ol mr-1"></i> 리스트형 글쓰기 코스 바스켓
+                </span>
+                <span id="selected-count-badge" class="text-xs font-bold text-amber-300">0곳 선택됨</span>
+              </div>
+              <h3 class="text-base sm:text-lg font-extrabold text-white">
+                이번 포스팅에 담을 추천 장소 리스트
+              </h3>
+              <p id="selected-stats-summary" class="text-xs text-slate-300">
+                관광지, 맛집, 카페, 포토스팟을 원하는 순서대로 자유롭게 조합하세요.
+              </p>
+            </div>
+
+            <!-- Quick Basket Actions -->
+            <div class="flex items-center gap-2 flex-wrap">
+              <button onclick="handleAutoSelectBestCourse()" title="대표 관광지 2곳 + 맛집 1곳 + 카페 1곳을 추천 장소에서 원클릭으로 자동 선정합니다."
+                class="px-3 py-1.5 rounded-xl bg-indigo-600 hover:bg-indigo-500 text-white text-xs font-bold transition-all shadow-xs flex items-center gap-1.5">
+                <i class="fa-solid fa-wand-magic-sparkles text-amber-300"></i>
+                <span>알짜 BEST 코스 자동 담기</span>
+              </button>
+              <button onclick="openCustomPlaceModal()" 
+                class="px-3 py-1.5 rounded-xl bg-white/10 hover:bg-white/20 text-white text-xs font-semibold border border-white/20 transition-all flex items-center gap-1.5">
+                <i class="fa-solid fa-plus"></i>
+                <span>나만의 장소 직접 등록</span>
+              </button>
+              <button onclick="handleClearCourseBasket()" class="px-2.5 py-1.5 rounded-xl bg-white/5 hover:bg-rose-500/30 hover:text-rose-200 text-slate-400 text-xs transition-colors">
+                <i class="fa-solid fa-trash-can"></i>
+              </button>
+            </div>
+          </div>
+
+          <!-- Selected Places Chips List (Draggable/Reorderable) -->
+          <div id="selected-places-list" class="pt-4 flex flex-wrap items-center gap-2.5 min-h-[52px]">
+            <!-- Dynamic selected place tags rendered by JS -->
+            <div class="text-xs text-slate-400 py-2 flex items-center gap-2">
+              <i class="fa-regular fa-hand-pointer text-blue-400"></i>
+              <span>아래 추천 카드에서 <strong>[+ 이번 글에 담기]</strong> 버튼을 누르거나, 위 <strong>[알짜 BEST 코스 자동 담기]</strong>를 눌러보세요!</span>
+            </div>
+          </div>
+
+          <!-- Bottom Action -->
+          <div class="pt-4 mt-4 border-t border-white/10 flex flex-col sm:flex-row items-center justify-between gap-3">
+            <div class="text-[11px] text-slate-400">
+              💡 최소 1곳 이상 선택 후 다음 단계를 진행할 수 있습니다. (추천: 3~5곳으로 구성 시 상위 노출에 최적화)
+            </div>
+            <button id="btn-proceed-to-step2" onclick="proceedToStep2()" disabled
+              class="w-full sm:w-auto px-6 py-2.5 bg-blue-600 hover:bg-blue-500 disabled:bg-slate-700 disabled:text-slate-500 disabled:cursor-not-allowed text-white font-extrabold text-xs sm:text-sm rounded-xl shadow-md transition-all flex items-center justify-center gap-2">
+              <span id="btn-proceed-step2-text">선택한 장소들로 2단계 진행 ➔</span>
+            </button>
+          </div>
+        </div>
+
+        <!-- Recommendations Grid Header & Category Filters -->
+        <div class="space-y-4">
+          <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+            <div>
+              <h3 class="text-sm font-extrabold text-slate-800 flex items-center gap-2">
+                <i class="fa-solid fa-layer-group text-blue-600"></i>
+                <span>카테고리별 추천 장소 상세 카드</span>
+              </h3>
+              <p class="text-xs text-slate-500 mt-0.5">왜 추천하는지, 어떤 메뉴와 볼거리가 있는지, 주소와 운영정보를 확인하고 포스팅에 담으세요.</p>
+            </div>
+
+            <!-- Category Filter Tabs -->
+            <div id="place-cat-tabs" class="flex items-center gap-1.5 overflow-x-auto pb-1 sm:pb-0 text-xs">
+              <button onclick="filterPlaceCategory('ALL')" id="pcat-ALL" class="px-3 py-1.5 rounded-xl font-bold bg-blue-600 text-white shadow-xs">전체보기</button>
+              <button onclick="filterPlaceCategory('sightseeing')" id="pcat-sightseeing" class="px-3 py-1.5 rounded-xl font-medium bg-white text-slate-600 hover:bg-slate-100 border border-slate-200">🏛️ 관광지 & 랜드마크</button>
+              <button onclick="filterPlaceCategory('food')" id="pcat-food" class="px-3 py-1.5 rounded-xl font-medium bg-white text-slate-600 hover:bg-slate-100 border border-slate-200">🍽️ 대표 맛집</button>
+              <button onclick="filterPlaceCategory('cafe')" id="pcat-cafe" class="px-3 py-1.5 rounded-xl font-medium bg-white text-slate-600 hover:bg-slate-100 border border-slate-200">☕ 감성 카페</button>
+              <button onclick="filterPlaceCategory('photo')" id="pcat-photo" class="px-3 py-1.5 rounded-xl font-medium bg-white text-slate-600 hover:bg-slate-100 border border-slate-200">📸 인생샷 명소</button>
+            </div>
+          </div>
+
+          <!-- Recommendations Grid of Rich Place Cards -->
+          <div id="recommendations-grid" class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4 sm:gap-5">
+            <!-- Dynamic Recommendation Cards rendered by JS -->
+          </div>
+        </div>
+      </section>
+
+      <!-- ─── STEP 2 PANEL: 리스트형 상세 기획 / SEO & 비주얼 에셋 ─── -->
+      <section id="step-panel-2" class="hidden space-y-6">
+        <!-- Course Roadmap Banner -->
+        <div class="bg-white p-5 rounded-2xl border border-slate-200/80 shadow-xs space-y-2">
+          <div class="flex items-center justify-between">
+            <span class="text-xs font-bold text-blue-600 uppercase tracking-wider">선택된 리스트형 포스팅 코스 로드맵</span>
+            <button onclick="goToStep(1)" class="px-3 py-1.5 text-xs font-semibold rounded-lg bg-slate-100 hover:bg-slate-200 text-slate-700 transition-colors">
+              <i class="fa-solid fa-pen-to-square mr-1"></i> 장소 및 코스 수정
+            </button>
+          </div>
+          <div id="step2-course-roadmap" class="flex flex-wrap items-center gap-2 pt-1 text-xs">
+            <!-- Rendered by JS -->
+          </div>
+        </div>
+
+        <!-- Loading State -->
+        <div id="step2-loading" class="hidden bg-white p-12 rounded-2xl border border-slate-200 text-center space-y-3">
+          <div class="w-12 h-12 border-4 border-blue-200 border-t-blue-600 rounded-full animate-spin mx-auto"></div>
+          <p class="text-sm font-bold text-slate-800">리스트형 블로그 제목, 통합 SEO 메타, 장소별 영문 이미지 프롬프트를 기획 중입니다...</p>
+          <p class="text-xs text-slate-400">Gemini AI 모델과 지식베이스를 동시 활용하여 리스트형 포스팅에 최적화 중입니다.</p>
+        </div>
+
+        <!-- Generated Assets Content -->
+        <div id="step2-content" class="space-y-6">
+          <!-- Summary & SEO Section -->
+          <div class="grid grid-cols-1 lg:grid-cols-2 gap-6">
+            <!-- Left: Course Summary & Timeline -->
+            <div class="bg-white p-5 rounded-2xl border border-slate-200/80 shadow-xs space-y-4">
+              <div class="flex items-center justify-between pb-2 border-b border-slate-100">
+                <h3 class="text-sm font-extrabold text-slate-800 flex items-center gap-2">
+                  <i class="fa-solid fa-route text-blue-600"></i>
+                  <span>코스 동선 총평 & 소요 시간 가이드</span>
+                </h3>
+                <button onclick="copyText(document.getElementById('step2-summary').innerText)" class="text-xs text-slate-500 hover:text-blue-600">
+                  <i class="fa-regular fa-copy mr-1"></i> 복사
+                </button>
+              </div>
+              <p id="step2-summary" class="text-xs sm:text-sm text-slate-700 leading-relaxed bg-slate-50 p-3.5 rounded-xl border border-slate-200/60 font-normal">-</p>
+
+              <div>
+                <span class="text-xs font-bold text-slate-600 block mb-1">
+                  <i class="fa-regular fa-clock text-amber-500 mr-1"></i> 권장 소요 시간 및 이동 동선
+                </span>
+                <p id="step2-hours" class="text-xs text-slate-700 bg-amber-50/70 border border-amber-200 p-2.5 rounded-lg font-medium">-</p>
+              </div>
+            </div>
+
+            <!-- Right: SEO Meta Tags & Titles -->
+            <div class="bg-white p-5 rounded-2xl border border-slate-200/80 shadow-xs space-y-4">
+              <div class="flex items-center justify-between pb-2 border-b border-slate-100">
+                <h3 class="text-sm font-extrabold text-slate-800 flex items-center gap-2">
+                  <i class="fa-solid fa-magnifying-glass text-emerald-600"></i>
+                  <span>리스트형 SEO 검색 최적화 메타 태그</span>
+                </h3>
+                <button onclick="copyText(document.getElementById('step2-meta-description').innerText)" class="text-xs text-slate-500 hover:text-emerald-600">
+                  <i class="fa-regular fa-copy mr-1"></i> 메타설명 복사
+                </button>
+              </div>
+
+              <div>
+                <span class="text-xs font-bold text-slate-600 block mb-1.5">핵심 포커스 키워드</span>
+                <div id="step2-keywords-tags" class="flex flex-wrap gap-1.5">
+                  <!-- Dynamic tags -->
+                </div>
+              </div>
+
+              <div>
+                <span class="text-xs font-bold text-slate-600 block mb-1">메타 디스크립션 (140~160자 내외)</span>
+                <p id="step2-meta-description" class="text-xs text-slate-700 bg-slate-50 p-2.5 rounded-lg border border-slate-200 font-normal leading-relaxed">-</p>
+              </div>
+
+              <div>
+                <span class="text-xs font-bold text-slate-600 block mb-1.5">클릭을 부르는 추천 리스트형 블로그 제목</span>
+                <div id="step2-titles-list" class="space-y-1.5">
+                  <!-- Dynamic Titles -->
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <!-- Places Detailed Photo & Highlight Cards -->
+          <div class="bg-white p-5 sm:p-6 rounded-2xl border border-slate-200/80 shadow-xs space-y-4">
+            <div class="flex items-center justify-between pb-2 border-b border-slate-100">
+              <div>
+                <h3 class="text-sm font-extrabold text-slate-800 flex items-center gap-2">
+                  <i class="fa-solid fa-camera text-purple-600"></i>
+                  <span>각 장소별 촬영/하이라이트 팁 & AI 사진 프롬프트</span>
+                </h3>
+                <p class="text-[11px] text-slate-400">포스팅에 들어갈 장소별 실사 사진 생성 프롬프트(Midjourney/DALL-E)와 핵심 강조 포인트를 확인하세요.</p>
+              </div>
+            </div>
+
+            <div id="step2-place-asset-cards" class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+              <!-- Rendered by JS -->
+            </div>
+          </div>
+
+          <!-- Wide Thumbnail Catchphrases & Prompt -->
+          <div class="bg-white p-5 rounded-2xl border border-slate-200/80 shadow-xs space-y-4">
+            <div class="flex items-center justify-between pb-2 border-b border-slate-100">
+              <h3 class="text-sm font-extrabold text-slate-800 flex items-center gap-2">
+                <i class="fa-solid fa-panorama text-amber-500"></i>
+                <span>대표 썸네일 (16:9 와이드) 프롬프트 & 오버레이 문구</span>
+              </h3>
+              <button onclick="copyText(document.getElementById('img-prompt-thumb').value)" class="text-xs text-slate-500 hover:text-amber-600 font-medium">프롬프트 복사</button>
+            </div>
+
+            <div class="grid grid-cols-1 lg:grid-cols-3 gap-4">
+              <div class="lg:col-span-2 space-y-2">
+                <span class="text-xs font-bold text-slate-700">미드저니 8K 와이드 썸네일 프롬프트</span>
+                <textarea id="img-prompt-thumb" rows="3" readonly class="w-full text-xs bg-slate-50 border border-slate-200 rounded-xl p-3 text-slate-700 font-mono resize-none focus:outline-none"></textarea>
+              </div>
+              <div class="space-y-2">
+                <span class="text-xs font-bold text-slate-700">썸네일 캐치프레이즈 (이미지 문구)</span>
+                <div id="step2-catchphrases" class="space-y-1.5">
+                  <!-- Dynamic Catchphrases -->
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <!-- Bottom Navigation -->
+          <div class="flex items-center justify-between pt-2">
+            <button onclick="goToStep(1)" class="px-5 py-2.5 text-xs font-bold rounded-xl bg-slate-200 hover:bg-slate-300 text-slate-700 transition-colors">
+              <i class="fa-solid fa-arrow-left mr-1"></i> 이전 단계 (장소 수정)
+            </button>
+            <button onclick="proceedToStep3()" class="px-6 py-2.5 bg-blue-600 hover:bg-blue-700 text-white text-sm font-bold rounded-xl shadow-xs transition-colors flex items-center gap-2">
+              <span>3단계: 톤앤매너 & 리스트 마스터 프롬프트 생성</span>
+              <i class="fa-solid fa-arrow-right"></i>
+            </button>
+          </div>
+        </div>
+      </section>
+
+
+      <!-- ─── STEP 3 PANEL: 톤앤매너 & 마스터 프롬프트 ─── -->
+      <section id="step-panel-3" class="hidden space-y-6">
+        <!-- Configuration Card -->
+        <div class="bg-white p-5 sm:p-6 rounded-2xl border border-slate-200/80 shadow-xs space-y-5">
+          <div>
+            <h3 class="text-sm font-extrabold text-slate-800 flex items-center gap-2">
+              <i class="fa-solid fa-sliders text-blue-600"></i>
+              <span>톤앤매너 프리셋 선택</span>
+            </h3>
+            <p class="text-xs text-slate-500 mt-0.5">원하는 블로그 필진의 문체와 독자층 스타일에 맞는 프리셋을 지정하세요.</p>
+          </div>
+
+          <!-- Tone Presets Cards -->
+          <div id="tone-presets-container" class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-3">
+            <!-- Dynamic Radios rendered by JS -->
+          </div>
+
+          <!-- Detailed Parameters -->
+          <div class="grid grid-cols-1 md:grid-cols-3 gap-4 pt-3 border-t border-slate-100">
+            <div>
+              <label class="block text-xs font-bold text-slate-700 mb-1">타겟 독자</label>
+              <input id="target-audience-input" type="text" value="2030 자유여행객 및 주말 힐링 나들이족" onchange="handleBuildMasterPrompt()"
+                class="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl text-xs font-medium focus:bg-white focus:outline-none focus:ring-2 focus:ring-blue-500/20">
+            </div>
+
+            <div>
+              <label class="block text-xs font-bold text-slate-700 mb-1">목표 글자수 (공백 포함)</label>
+              <select id="target-words-select" onchange="handleBuildMasterPrompt()" class="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl text-xs font-medium focus:bg-white focus:outline-none focus:ring-2 focus:ring-blue-500/20">
+                <option value="1500">1,500자 (간결한 리뷰형)</option>
+                <option value="2200" selected>2,200자 (표준 상위노출 포스팅)</option>
+                <option value="3500">3,500자 이상 (심층 여행 가이드)</option>
+              </select>
+            </div>
+
+            <div>
+              <label class="block text-xs font-bold text-slate-700 mb-1">추가 반영할 키워드 (쉼표 구분)</label>
+              <input id="extra-keywords-input" type="text" placeholder="예: 주차팁, 내돈내산, 웨이팅팁" onchange="handleBuildMasterPrompt()"
+                class="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl text-xs font-medium focus:bg-white focus:outline-none focus:ring-2 focus:ring-blue-500/20">
+            </div>
+          </div>
+        </div>
+
+        <!-- Master Prompt Preview Card -->
+        <div class="bg-white p-5 sm:p-6 rounded-2xl border border-slate-200/80 shadow-xs space-y-4">
+          <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-3 pb-3 border-b border-slate-100">
+            <div>
+              <h3 class="text-sm font-extrabold text-slate-800 flex items-center gap-2">
+                <i class="fa-solid fa-code text-indigo-600"></i>
+                <span>최종 마스터 프롬프트 (Master Prompt)</span>
+              </h3>
+              <p class="text-[11px] text-slate-500">ChatGPT, Claude, Gemini 어디에나 바로 붙여넣어 완벽한 글을 도출할 수 있는 최고 수준의 프롬프트입니다.</p>
+            </div>
+
+            <div class="flex items-center gap-2">
+              <button onclick="copyText(document.getElementById('master-prompt-textarea').value)" class="px-3.5 py-1.5 text-xs font-bold rounded-xl bg-slate-100 hover:bg-slate-200 text-slate-700 transition-colors flex items-center gap-1.5 shadow-2xs">
+                <i class="fa-regular fa-copy"></i>
+                <span>프롬프트 전체 복사</span>
+              </button>
+            </div>
+          </div>
+
+          <div class="relative">
+            <textarea id="master-prompt-textarea" rows="12" class="w-full p-4 bg-slate-900 text-slate-100 rounded-xl font-mono text-xs leading-relaxed focus:outline-none border border-slate-800 resize-y shadow-inner"></textarea>
+          </div>
+
+          <!-- Direct AI Execution or Proceed -->
+          <div class="flex flex-col sm:flex-row items-center justify-between gap-3 pt-2">
+            <button onclick="goToStep(2)" class="w-full sm:w-auto px-5 py-2.5 text-xs font-bold rounded-xl bg-slate-200 hover:bg-slate-300 text-slate-700 transition-colors">
+              <i class="fa-solid fa-arrow-left mr-1"></i> 이전 단계
+            </button>
+
+            <div class="flex items-center gap-2 w-full sm:w-auto">
+              <!-- AI One-Click Generate -->
+              <button id="btn-generate-article-ai" onclick="handleGenerateArticleDirectly()" 
+                class="flex-1 sm:flex-initial px-5 py-2.5 text-xs font-bold rounded-xl bg-gradient-to-r from-indigo-600 to-blue-600 hover:from-indigo-700 hover:to-blue-700 text-white shadow-xs transition-all flex items-center justify-center gap-2">
+                <i class="fa-solid fa-wand-magic-sparkles"></i>
+                <span>Gemini AI로 본문 즉시 작성하기</span>
+              </button>
+
+              <button onclick="proceedToStep4()" class="flex-1 sm:flex-initial px-6 py-2.5 bg-blue-600 hover:bg-blue-700 text-white text-xs sm:text-sm font-bold rounded-xl shadow-xs transition-colors flex items-center justify-center gap-2">
+                <span>4단계: 본문 검수 & SNS ➔</span>
+              </button>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <!-- ─── STEP 4 PANEL: 본문 검수 & SNS 가공 ─── -->
+      <section id="step-panel-4" class="hidden space-y-6">
+        <!-- Real-Time Word Count Stats Banner -->
+        <div class="grid grid-cols-2 md:grid-cols-4 gap-3">
+          <div class="bg-white p-4 rounded-2xl border border-slate-200/80 shadow-xs flex items-center gap-3">
+            <div class="w-10 h-10 rounded-xl bg-blue-50 text-blue-600 flex items-center justify-center text-sm font-bold">
+              <i class="fa-solid fa-font"></i>
+            </div>
+            <div>
+              <span class="text-[11px] text-slate-400 font-bold block">공백 포함 글자수</span>
+              <span id="stat-char-with-space" class="text-base sm:text-lg font-extrabold text-slate-900 font-mono">0</span>
+            </div>
+          </div>
+
+          <div class="bg-white p-4 rounded-2xl border border-slate-200/80 shadow-xs flex items-center gap-3">
+            <div class="w-10 h-10 rounded-xl bg-indigo-50 text-indigo-600 flex items-center justify-center text-sm font-bold">
+              <i class="fa-solid fa-align-left"></i>
+            </div>
+            <div>
+              <span class="text-[11px] text-slate-400 font-bold block">공백 제외 글자수</span>
+              <span id="stat-char-without-space" class="text-base sm:text-lg font-extrabold text-slate-900 font-mono">0</span>
+            </div>
+          </div>
+
+          <div class="bg-white p-4 rounded-2xl border border-slate-200/80 shadow-xs flex items-center gap-3">
+            <div class="w-10 h-10 rounded-xl bg-emerald-50 text-emerald-600 flex items-center justify-center text-sm font-bold">
+              <i class="fa-solid fa-book-open"></i>
+            </div>
+            <div>
+              <span class="text-[11px] text-slate-400 font-bold block">총 단어 수</span>
+              <span id="stat-words" class="text-base sm:text-lg font-extrabold text-slate-900 font-mono">0</span>
+            </div>
+          </div>
+
+          <div class="bg-white p-4 rounded-2xl border border-slate-200/80 shadow-xs flex items-center gap-3">
+            <div class="w-10 h-10 rounded-xl bg-amber-50 text-amber-600 flex items-center justify-center text-sm font-bold">
+              <i class="fa-regular fa-clock"></i>
+            </div>
+            <div>
+              <span class="text-[11px] text-slate-400 font-bold block">예상 읽기 시간</span>
+              <span id="stat-reading-time" class="text-base sm:text-lg font-extrabold text-slate-900 font-mono">0분</span>
+            </div>
+          </div>
+        </div>
+
+        <!-- Article Editor & Format Switcher -->
+        <div class="bg-white rounded-2xl border border-slate-200/80 shadow-xs overflow-hidden">
+          <!-- Editor Header with Tab switcher -->
+          <div class="bg-slate-50/80 px-4 py-3 border-b border-slate-200/80 flex flex-wrap items-center justify-between gap-3">
+            <div class="flex items-center gap-1.5 bg-slate-200/60 p-1 rounded-xl">
+              <button id="tab-btn-markdown" onclick="switchOutputTab('markdown')" class="px-3 py-1.5 text-xs font-bold rounded-lg bg-blue-600 text-white shadow-xs">
+                <i class="fa-brands fa-markdown mr-1"></i> 마크다운 본문
+              </button>
+              <button id="tab-btn-html" onclick="switchOutputTab('html')" class="px-3 py-1.5 text-xs font-medium rounded-lg text-slate-600 hover:bg-slate-200/70 transition-colors">
+                <i class="fa-solid fa-code mr-1"></i> 티스토리·워드프레스 HTML
+              </button>
+              <button id="tab-btn-preview" onclick="switchOutputTab('preview')" class="px-3 py-1.5 text-xs font-medium rounded-lg text-slate-600 hover:bg-slate-200/70 transition-colors">
+                <i class="fa-solid fa-eye mr-1"></i> 실시간 미리보기
+              </button>
+            </div>
+
+            <div class="flex items-center gap-2">
+              <button onclick="copyCurrentTabContent()" class="px-3 py-1.5 text-xs font-bold rounded-lg bg-white border border-slate-200 hover:bg-slate-50 text-slate-700 transition-colors flex items-center gap-1.5 shadow-2xs">
+                <i class="fa-regular fa-copy"></i>
+                <span id="tab-copy-label">현재 서식 복사</span>
+              </button>
+            </div>
+          </div>
+
+          <!-- Panes -->
+          <div class="p-4 sm:p-5">
+            <!-- Markdown Pane -->
+            <div id="tab-pane-markdown">
+              <textarea id="article-editor-textarea" rows="16" placeholder="AI가 작성한 글을 붙여넣거나 직접 작성해보세요. 글자수와 SNS 포맷이 실시간으로 자동 가공됩니다..."
+                class="w-full p-4 bg-slate-50 border border-slate-200 rounded-xl text-xs sm:text-sm text-slate-800 leading-relaxed font-sans focus:bg-white focus:outline-none focus:ring-2 focus:ring-blue-500/20"></textarea>
+            </div>
+
+            <!-- Clean HTML Pane -->
+            <div id="tab-pane-html" class="hidden">
+              <textarea id="article-html-output" rows="16" readonly
+                class="w-full p-4 bg-slate-900 text-emerald-400 font-mono text-xs leading-relaxed rounded-xl focus:outline-none resize-y"></textarea>
+            </div>
+
+            <!-- Preview Pane -->
+            <div id="tab-pane-preview" class="hidden">
+              <div id="article-html-preview" class="p-6 bg-white border border-slate-200 rounded-xl min-h-[380px] max-h-[600px] overflow-y-auto">
+                <!-- Live HTML rendered here -->
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <!-- SNS Multi-Format Transformation Package -->
+        <div class="bg-white p-5 sm:p-6 rounded-2xl border border-slate-200/80 shadow-xs space-y-4">
+          <div>
+            <h3 class="text-sm font-extrabold text-slate-800 flex items-center gap-2">
+              <i class="fa-solid fa-share-nodes text-blue-600"></i>
+              <span>SNS 맞춤형 텍스트 패키지 (원클릭 가공)</span>
+            </h3>
+            <p class="text-xs text-slate-500 mt-0.5">작성된 본문을 바탕으로 인스타그램, 페이스북, 스레드, 트위터에 즉시 복사할 수 있는 포맷을 생성합니다.</p>
+          </div>
+
+          <div class="grid grid-cols-1 lg:grid-cols-3 gap-4">
+            <!-- Instagram -->
+            <div class="bg-gradient-to-b from-pink-50/50 to-white p-4 rounded-xl border border-pink-200/80 space-y-2">
+              <div class="flex items-center justify-between">
+                <span class="text-xs font-bold text-pink-700 flex items-center gap-1.5">
+                  <i class="fa-brands fa-instagram text-sm"></i> 인스타그램 릴스/카드뉴스
+                </span>
+                <button onclick="copyText(document.getElementById('sns-instagram-text').value)" class="text-xs text-pink-700 hover:text-pink-900 font-medium">복사</button>
+              </div>
+              <textarea id="sns-instagram-text" rows="8" readonly class="w-full p-2.5 bg-white border border-pink-100 rounded-lg text-xs text-slate-700 resize-none focus:outline-none"></textarea>
+            </div>
+
+            <!-- Threads / Facebook -->
+            <div class="bg-gradient-to-b from-indigo-50/50 to-white p-4 rounded-xl border border-indigo-200/80 space-y-2">
+              <div class="flex items-center justify-between">
+                <span class="text-xs font-bold text-indigo-700 flex items-center gap-1.5">
+                  <i class="fa-brands fa-threads text-sm"></i> 스레드 & 페이스북
+                </span>
+                <button onclick="copyText(document.getElementById('sns-threads-text').value)" class="text-xs text-indigo-700 hover:text-indigo-900 font-medium">복사</button>
+              </div>
+              <textarea id="sns-threads-text" rows="8" readonly class="w-full p-2.5 bg-white border border-indigo-100 rounded-lg text-xs text-slate-700 resize-none focus:outline-none"></textarea>
+            </div>
+
+            <!-- Twitter / X -->
+            <div class="bg-gradient-to-b from-slate-100/50 to-white p-4 rounded-xl border border-slate-200 space-y-2">
+              <div class="flex items-center justify-between">
+                <span class="text-xs font-bold text-slate-800 flex items-center gap-1.5">
+                  <i class="fa-brands fa-x-twitter text-sm"></i> 트위터 / X 스레드 (1/3 타래)
+                </span>
+                <button onclick="copyText(document.getElementById('sns-twitter-text').value)" class="text-xs text-slate-700 hover:text-slate-900 font-medium">복사</button>
+              </div>
+              <textarea id="sns-twitter-text" rows="8" readonly class="w-full p-2.5 bg-white border border-slate-200 rounded-lg text-xs text-slate-700 resize-none focus:outline-none"></textarea>
+            </div>
+          </div>
+        </div>
+
+        <!-- Final Action Bar -->
+        <div class="bg-slate-900 text-white p-5 rounded-2xl shadow-xl flex flex-col sm:flex-row items-center justify-between gap-4">
+          <div>
+            <h4 class="text-sm font-bold">콘텐츠 기획이 완료되었나요?</h4>
+            <p class="text-xs text-slate-400 mt-0.5">히스토리에 보관하고 구글 스프레드시트에 영구 동기화합니다.</p>
+          </div>
+
+          <div class="flex items-center gap-3 w-full sm:w-auto">
+            <button onclick="goToStep(1)" class="flex-1 sm:flex-initial px-4 py-2.5 text-xs font-semibold rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-300 transition-colors">
+              <i class="fa-solid fa-rotate-left mr-1"></i> 새 장소 기획
+            </button>
+            <button onclick="handleSaveCurrentWork()" class="flex-1 sm:flex-initial px-6 py-2.5 text-xs sm:text-sm font-bold rounded-xl bg-blue-600 hover:bg-blue-500 text-white shadow-md transition-all flex items-center justify-center gap-2">
+              <i class="fa-solid fa-cloud-arrow-up"></i>
+              <span>히스토리 및 구글 시트에 저장</span>
+            </button>
+          </div>
+        </div>
+      </section>
+
+      <!-- ─── 5. 메인 최하단: 블로거 필수 즐겨찾기 리스트 (리스트 형식 & 모아보기) ─── -->
+      <section id="main-favorites-section" class="bg-white rounded-2xl border border-slate-200/90 shadow-xs p-5 sm:p-6 space-y-4">
+        <!-- Section Header -->
+        <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-3 pb-3 border-b border-slate-100">
+          <div class="flex items-center gap-2.5">
+            <div class="w-8 h-8 rounded-xl bg-amber-500/10 text-amber-500 flex items-center justify-center shrink-0">
+              <i class="fa-solid fa-star text-sm"></i>
+            </div>
+            <div>
+              <h3 class="text-base font-extrabold text-slate-900 flex items-center gap-2">
+                <span>블로거 필수 즐겨찾기 사이트</span>
+                <span id="main-fav-counter" class="text-xs font-bold text-amber-600 bg-amber-50 px-2 py-0.5 rounded-full border border-amber-200/70">5개</span>
+              </h3>
+              <p class="text-xs text-slate-500">여행 블로그 포스팅 시 자주 참고하는 플랫폼, 분석 도구, 디자인 사이트를 리스트로 모아두었습니다.</p>
+            </div>
+          </div>
+
+          <!-- Actions: Filter Chips & View All Fullpage Button -->
+          <div class="flex items-center gap-2 flex-wrap sm:flex-nowrap">
+            <button onclick="switchView('favorites')" 
+              class="px-3 py-1.5 text-xs font-bold rounded-xl bg-slate-900 hover:bg-slate-800 text-white flex items-center gap-1.5 shadow-xs transition-all">
+              <i class="fa-solid fa-expand text-[11px] text-amber-400"></i>
+              <span>즐겨찾기 전체 페이지로 이동</span>
+            </button>
+            <button onclick="switchView('favorites'); togglePageAddFavForm(true);" 
+              class="px-3 py-1.5 text-xs font-bold rounded-xl bg-blue-50 hover:bg-blue-100 text-blue-700 border border-blue-200 flex items-center gap-1.5 shadow-2xs transition-colors">
+              <i class="fa-solid fa-plus text-[10px]"></i>
+              <span>새 사이트 등록</span>
+            </button>
+          </div>
+        </div>
+
+        <!-- Filter Category Tabs for Main Favorites List -->
+        <div class="flex items-center justify-between gap-2 overflow-x-auto pb-1">
+          <div class="flex items-center gap-1.5 shrink-0 text-xs">
+            <button onclick="filterMainFavoritesCategory('ALL')" id="main-fav-tab-ALL" class="px-3 py-1 rounded-lg text-xs font-bold bg-blue-600 text-white shadow-2xs">전체보기</button>
+            <button onclick="filterMainFavoritesCategory('블로그')" id="main-fav-tab-블로그" class="px-3 py-1 rounded-lg text-xs font-medium bg-slate-100 text-slate-600 hover:bg-slate-200">블로그 플랫폼</button>
+            <button onclick="filterMainFavoritesCategory('데이터')" id="main-fav-tab-데이터" class="px-3 py-1 rounded-lg text-xs font-medium bg-slate-100 text-slate-600 hover:bg-slate-200">데이터 & 키워드</button>
+            <button onclick="filterMainFavoritesCategory('디자인')" id="main-fav-tab-디자인" class="px-3 py-1 rounded-lg text-xs font-medium bg-slate-100 text-slate-600 hover:bg-slate-200">디자인 & AI</button>
+            <button onclick="filterMainFavoritesCategory('기타')" id="main-fav-tab-기타" class="px-3 py-1 rounded-lg text-xs font-medium bg-slate-100 text-slate-600 hover:bg-slate-200">기타</button>
+          </div>
+          <span class="text-[11px] text-slate-400 font-medium hidden md:inline-block">※ 사이트가 계속 추가되어도 깔끔한 리스트형태로 정리됩니다.</span>
+        </div>
+
+        <!-- Main Favorites List Container (Clean Table-like Rows) -->
+        <div id="main-favorites-list-container" class="divide-y divide-slate-100 border border-slate-100 rounded-xl overflow-hidden bg-slate-50/50">
+          <!-- Rendered dynamically by JS in clean list format -->
+        </div>
+      </section>
+
+      </div>
+      <!-- ================= /PAGE VIEW 1: 스튜디오 종료 ================= -->
+
+
+      <!-- ================= PAGE VIEW 2: 히스토리 보관함 ================= -->
+      <div id="view-history" class="page-view hidden space-y-6">
+        <!-- History Page Banner -->
+        <div class="bg-white p-5 sm:p-6 rounded-2xl border border-slate-200/90 shadow-xs flex flex-col md:flex-row md:items-center justify-between gap-4">
+          <div class="flex items-center gap-3.5">
+            <div class="w-12 h-12 rounded-2xl bg-blue-50 text-blue-600 flex items-center justify-center text-xl shrink-0">
+              <i class="fa-solid fa-clock-rotate-left"></i>
+            </div>
+            <div>
+              <div class="flex items-center gap-2.5">
+                <h2 class="text-lg sm:text-xl font-extrabold text-slate-900">작업 히스토리 보관함</h2>
+                <span id="history-page-counter" class="text-xs font-bold px-2.5 py-0.5 rounded-full bg-blue-100 text-blue-800">0개 저장됨</span>
+              </div>
+              <p class="text-xs text-slate-500 mt-0.5">작성했던 여행 기획, 장소 코스, 마스터 프롬프트, 포스팅 초안을 언제든 스튜디오로 다시 불러올 수 있습니다.</p>
+            </div>
+          </div>
+          <div class="flex items-center gap-2.5">
+            <div class="relative w-full sm:w-64">
+              <i class="fa-solid fa-magnifying-glass absolute left-3 top-1/2 -translate-y-1/2 text-slate-400 text-xs"></i>
+              <input id="history-search-input" oninput="renderHistoryList()" type="text" placeholder="지역, 장소명, 키워드 검색..."
+                class="w-full pl-8 pr-3 py-2 bg-slate-50 border border-slate-200 rounded-xl text-xs font-medium focus:bg-white focus:outline-none focus:ring-2 focus:ring-blue-500/20">
+            </div>
+            <button onclick="switchView('studio'); goToStep(1);" class="px-3.5 py-2 text-xs font-bold rounded-xl bg-blue-600 hover:bg-blue-700 text-white flex items-center gap-1.5 shadow-xs transition-colors shrink-0">
+              <i class="fa-solid fa-plus text-xs"></i>
+              <span>새 글 기획하기</span>
+            </button>
+          </div>
+        </div>
+
+        <!-- History Cards Grid Container -->
+        <div id="history-list-container" class="grid grid-cols-1 md:grid-cols-2 gap-4">
+          <!-- Rendered dynamically by JS -->
+        </div>
+      </div>
+      <!-- ================= /PAGE VIEW 2: 히스토리 보관함 종료 ================= -->
+
+
+      <!-- ================= PAGE VIEW 3: 즐겨찾기 허브 ================= -->
+      <div id="view-favorites" class="page-view hidden space-y-6">
+        <!-- Favorites Page Header -->
+        <div class="bg-white p-5 sm:p-6 rounded-2xl border border-slate-200/90 shadow-xs flex flex-col md:flex-row md:items-center justify-between gap-4">
+          <div class="flex items-center gap-3.5">
+            <div class="w-12 h-12 rounded-2xl bg-amber-50 text-amber-600 flex items-center justify-center text-xl shrink-0">
+              <i class="fa-solid fa-star"></i>
+            </div>
+            <div>
+              <div class="flex items-center gap-2.5">
+                <h2 class="text-lg sm:text-xl font-extrabold text-slate-900">블로거 필수 즐겨찾기 허브</h2>
+                <span id="page-fav-counter" class="text-xs font-bold px-2.5 py-0.5 rounded-full bg-amber-100 text-amber-800">총 0개</span>
+              </div>
+              <p class="text-xs text-slate-500 mt-0.5">네이버 검색, 키워드 분석, 썸네일 디자인, AI 도구 등 블로그 운영 필수 사이트를 원클릭으로 이용하세요.</p>
+            </div>
+          </div>
+          <div class="flex items-center gap-2.5 flex-wrap sm:flex-nowrap">
+            <div class="relative w-full sm:w-64">
+              <i class="fa-solid fa-magnifying-glass absolute left-3 top-1/2 -translate-y-1/2 text-slate-400 text-xs"></i>
+              <input id="page-fav-search" oninput="renderFavoritesPageView()" type="text" placeholder="사이트명 또는 URL 실시간 검색..."
+                class="w-full pl-8 pr-3 py-2 bg-slate-50 border border-slate-200 rounded-xl text-xs font-medium focus:bg-white focus:outline-none focus:ring-2 focus:ring-blue-500/20">
+            </div>
+            <button onclick="togglePageAddFavForm()" class="px-3.5 py-2 text-xs font-bold rounded-xl bg-blue-600 hover:bg-blue-700 text-white flex items-center gap-1.5 shadow-xs transition-colors shrink-0">
+              <i class="fa-solid fa-plus text-xs"></i>
+              <span>새 즐겨찾기 등록</span>
+            </button>
+          </div>
+        </div>
+
+        <!-- Inline Add Favorite Form Card (팝업 없이 페이지 내부에서 즉시 등록) -->
+        <div id="page-fav-add-card" class="hidden bg-white p-5 rounded-2xl border-2 border-blue-500/30 shadow-sm space-y-4">
+          <div class="flex items-center justify-between border-b border-slate-100 pb-2.5">
+            <h4 class="text-xs font-extrabold text-slate-900 flex items-center gap-1.5">
+              <i class="fa-solid fa-bookmark text-blue-600"></i>
+              <span>새 즐겨찾기 사이트 등록하기</span>
+            </h4>
+            <button onclick="togglePageAddFavForm(false)" class="text-slate-400 hover:text-slate-600 text-xs p-1">
+              <i class="fa-solid fa-xmark"></i> 닫기
+            </button>
+          </div>
+          <div class="grid grid-cols-1 md:grid-cols-3 gap-3 text-xs">
+            <div>
+              <label class="block font-bold text-slate-700 mb-1">사이트 이름 <span class="text-rose-500">*</span></label>
+              <input id="page-fav-name" type="text" placeholder="예: 브런치스토리, 노션" class="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl focus:bg-white focus:outline-none focus:ring-2 focus:ring-blue-500/20">
+            </div>
+            <div>
+              <label class="block font-bold text-slate-700 mb-1">URL 주소 <span class="text-rose-500">*</span></label>
+              <input id="page-fav-url" type="url" value="https://" class="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl font-mono focus:bg-white focus:outline-none focus:ring-2 focus:ring-blue-500/20">
+            </div>
+            <div>
+              <label class="block font-bold text-slate-700 mb-1">카테고리</label>
+              <select id="page-fav-cat" class="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl focus:bg-white focus:outline-none">
+                <option value="블로그">블로그 플랫폼</option>
+                <option value="데이터">데이터 & 키워드</option>
+                <option value="디자인">디자인 & AI</option>
+                <option value="기타">기타 유용한 사이트</option>
+              </select>
+            </div>
+          </div>
+          <div class="flex justify-end gap-2 pt-1">
+            <button onclick="togglePageAddFavForm(false)" class="px-3.5 py-1.5 text-xs text-slate-600 rounded-lg hover:bg-slate-100 font-medium">취소</button>
+            <button onclick="savePageNewFavorite()" class="px-4 py-1.5 text-xs font-bold text-white bg-blue-600 hover:bg-blue-700 rounded-lg shadow-xs">즐겨찾기 저장</button>
+          </div>
+        </div>
+
+        <!-- Category Filter Tabs Bar -->
+        <div class="flex items-center justify-between gap-2 overflow-x-auto bg-white p-3 rounded-2xl border border-slate-200/90 shadow-2xs">
+          <div class="flex items-center gap-1.5 shrink-0 text-xs">
+            <button onclick="setPageFavCategory('ALL')" id="page-fav-cat-ALL" class="px-3 py-1.5 rounded-lg text-xs font-bold bg-slate-900 text-white shadow-xs">전체보기</button>
+            <button onclick="setPageFavCategory('블로그')" id="page-fav-cat-블로그" class="px-3 py-1.5 rounded-lg text-xs font-medium bg-slate-100 text-slate-700 hover:bg-slate-200">블로그 플랫폼</button>
+            <button onclick="setPageFavCategory('데이터')" id="page-fav-cat-데이터" class="px-3 py-1.5 rounded-lg text-xs font-medium bg-slate-100 text-slate-700 hover:bg-slate-200">데이터 & 키워드</button>
+            <button onclick="setPageFavCategory('디자인')" id="page-fav-cat-디자인" class="px-3 py-1.5 rounded-lg text-xs font-medium bg-slate-100 text-slate-700 hover:bg-slate-200">디자인 & AI</button>
+            <button onclick="setPageFavCategory('기타')" id="page-fav-cat-기타" class="px-3 py-1.5 rounded-lg text-xs font-medium bg-slate-100 text-slate-700 hover:bg-slate-200">기타</button>
+          </div>
+          <span class="text-[11px] text-slate-400 font-medium hidden sm:inline-block">원클릭으로 새 탭 열기 및 주소 복사가 가능합니다.</span>
+        </div>
+
+        <!-- Favorites Table-like Rows Container -->
+        <div id="page-favorites-grid" class="space-y-2">
+          <!-- Rendered dynamically by JS -->
+        </div>
+      </div>
+      <!-- ================= /PAGE VIEW 3: 즐겨찾기 허브 종료 ================= -->
+
+
+      <!-- ================= PAGE VIEW 4: 설정 & 연동 관리 ================= -->
+      <div id="view-settings" class="page-view hidden space-y-6">
+        <!-- Settings Page Banner -->
+        <div class="bg-white p-5 sm:p-6 rounded-2xl border border-slate-200/90 shadow-xs flex flex-col md:flex-row md:items-center justify-between gap-4">
+          <div class="flex items-center gap-3.5">
+            <div class="w-12 h-12 rounded-2xl bg-indigo-50 text-indigo-600 flex items-center justify-center text-xl shrink-0">
+              <i class="fa-solid fa-gear"></i>
+            </div>
+            <div>
+              <h2 class="text-lg sm:text-xl font-extrabold text-slate-900">설정 및 API 연결 관리</h2>
+              <p class="text-xs text-slate-500 mt-0.5">Google Gemini AI 모델 연동 및 구글 스프레드시트 영구 동기화 설정을 관리합니다.</p>
+            </div>
+          </div>
+          <button onclick="handleSaveSettings()" class="px-5 py-2.5 text-xs font-bold rounded-xl bg-blue-600 hover:bg-blue-700 text-white flex items-center gap-2 shadow-xs transition-all shrink-0">
+            <i class="fa-solid fa-floppy-disk"></i>
+            <span>설정 저장하기</span>
+          </button>
+        </div>
+
+        <!-- Setting Cards Grid -->
+        <div class="grid grid-cols-1 lg:grid-cols-2 gap-6">
+          <!-- Card 1: Gemini AI Key & Models -->
+          <div class="bg-white p-5 sm:p-6 rounded-2xl border border-slate-200/90 shadow-xs space-y-4">
+            <div class="flex items-center justify-between border-b border-slate-100 pb-3">
+              <div class="flex items-center gap-2">
+                <div class="w-8 h-8 rounded-lg bg-blue-600 text-white flex items-center justify-center">
+                  <i class="fa-solid fa-robot text-sm"></i>
+                </div>
+                <div>
+                  <h3 class="text-sm font-extrabold text-slate-900">Gemini AI 모델 연동</h3>
+                  <p class="text-[11px] text-slate-500">Google Gemini 최신 Flash 모델 제품군</p>
+                </div>
+              </div>
+              <a href="https://aistudio.google.com/app/apikey" target="_blank" class="text-xs font-bold text-blue-600 hover:underline flex items-center gap-1">
+                <span>무료 키 발급</span>
+                <i class="fa-solid fa-arrow-up-right-from-square text-[10px]"></i>
+              </a>
+            </div>
+
+            <div class="space-y-3 text-xs">
+              <div>
+                <label class="block font-bold text-slate-700 mb-1">Gemini API Key</label>
+                <div class="flex gap-2">
+                  <input id="settings-gemini-key" type="password" placeholder="AIzaSy..."
+                    class="flex-1 px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl font-mono text-xs focus:bg-white focus:outline-none focus:ring-2 focus:ring-blue-500/20">
+                  <button onclick="handleTestGeminiPing()" class="px-3.5 py-2 bg-slate-200 hover:bg-slate-300 text-slate-800 text-xs font-bold rounded-xl shrink-0 transition-colors">
+                    Ping 테스트
+                  </button>
+                </div>
+                <div id="gemini-ping-result" class="mt-2 min-h-[22px]"></div>
+              </div>
+
+              <div>
+                <label class="block font-bold text-slate-700 mb-1">AI 모델 선택</label>
+                <select id="settings-model-select" class="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl text-xs font-semibold focus:bg-white focus:outline-none">
+                  <option value="gemini-3.8-flash" selected>gemini-3.8-flash (최신 모델, 추천)</option>
+                  <option value="gemini-3.7-flash">gemini-3.7-flash (추론 & 속도 균형)</option>
+                  <option value="gemini-3.6-flash">gemini-3.6-flash</option>
+                  <option value="gemini-3.5-flash">gemini-3.5-flash</option>
+                  <option value="gemini-3.5-flash-lite">gemini-3.5-flash-lite (경량 초고속)</option>
+                  <option value="gemini-3.1-flash-lite">gemini-3.1-flash-lite (초경량)</option>
+                  <option value="gemini-3-flash-preview">gemini-3-flash-preview (프리뷰)</option>
+                </select>
+                <p class="text-[11px] text-slate-400 mt-1">※ 키가 없어도 내장 스마트 엔진이 작동하며, 키 입력 시 제미나이 AI 실시간 연동이 활성화됩니다.</p>
+              </div>
+            </div>
+          </div>
+
+          <!-- Card 2: Google Sheets Webhook -->
+          <div class="bg-white p-5 sm:p-6 rounded-2xl border border-slate-200/90 shadow-xs space-y-4">
+            <div class="flex items-center justify-between border-b border-slate-100 pb-3">
+              <div class="flex items-center gap-2">
+                <div class="w-8 h-8 rounded-lg bg-emerald-600 text-white flex items-center justify-center">
+                  <i class="fa-solid fa-table-cells text-sm"></i>
+                </div>
+                <div>
+                  <h3 class="text-sm font-extrabold text-slate-900">구글 스프레드시트 연동</h3>
+                  <p class="text-[11px] text-slate-500">Google Apps Script 웹앱 URL</p>
+                </div>
+              </div>
+            </div>
+
+            <div class="space-y-3 text-xs">
+              <div>
+                <label class="block font-bold text-slate-700 mb-1">웹앱 URL (exec)</label>
+                <div class="flex gap-2">
+                  <input id="settings-sheets-url" type="url" placeholder="https://script.google.com/macros/s/.../exec"
+                    class="flex-1 px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl font-mono text-xs focus:bg-white focus:outline-none focus:ring-2 focus:ring-blue-500/20">
+                  <button onclick="handleTestSheetsPing()" class="px-3.5 py-2 bg-slate-200 hover:bg-slate-300 text-slate-800 text-xs font-bold rounded-xl shrink-0 transition-colors">
+                    Ping 테스트
+                  </button>
+                </div>
+                <div id="sheets-ping-result" class="mt-2 min-h-[22px]"></div>
+                <p class="text-[11px] text-slate-400 mt-1">※ 연동 시 작성한 모든 글과 히스토리가 구글 시트에 실시간 영구 자동 기록됩니다.</p>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <!-- Card 3: Google Apps Script (GAS) 코드 내장 뷰어 (팝업 없이 페이지에서 즉시 복사) -->
+        <div id="gas-code-card" class="bg-white p-5 sm:p-6 rounded-2xl border border-slate-200/90 shadow-xs space-y-3">
+          <div class="flex items-center justify-between">
+            <div class="flex items-center gap-2">
+              <i class="fa-solid fa-code text-emerald-600"></i>
+              <h3 class="text-sm font-extrabold text-slate-900">Google Apps Script (GAS) 연동 코드 복사</h3>
+            </div>
+            <button onclick="copyGasCode()" class="px-4 py-2 bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-bold rounded-xl shadow-xs transition-colors flex items-center gap-1.5">
+              <i class="fa-regular fa-copy"></i>
+              <span>코드 전체 복사</span>
+            </button>
+          </div>
+          <div class="bg-slate-900 p-4 rounded-xl border border-slate-800">
+            <textarea id="page-gas-code-textarea" rows="8" readonly class="w-full bg-transparent text-emerald-400 font-mono text-xs leading-relaxed focus:outline-none resize-none"></textarea>
+          </div>
+          <p class="text-[11px] text-slate-500">
+            구글 스프레드시트의 <strong>[확장 프로그램] ➔ [Apps Script]</strong>에 위 코드를 붙여넣고, [배포] 시 액세스 권한을 <strong>'모든 사용자(Anyone)'</strong>로 설정한 뒤 배포된 URL을 위 입력란에 넣으면 됩니다.
+          </p>
+        </div>
+
+        <!-- Card 4: Step-by-Step Guides Accordion -->
+        <div class="space-y-3">
+          <details class="group bg-white rounded-2xl border border-slate-200/90 p-4 text-xs shadow-2xs">
+            <summary class="font-bold text-slate-800 cursor-pointer flex items-center justify-between">
+              <span class="flex items-center gap-2">
+                <i class="fa-solid fa-circle-question text-blue-500"></i>
+                <span>Gemini API 무료 키 발급 상세 안내</span>
+              </span>
+              <i class="fa-solid fa-chevron-down text-slate-400 group-open:rotate-180 transition-transform"></i>
+            </summary>
+            <div class="mt-3 text-slate-600 space-y-1.5 pl-3 border-l-2 border-blue-400 leading-relaxed">
+              <p>1. <a href="https://aistudio.google.com/app/apikey" target="_blank" class="text-blue-600 font-bold underline">Google AI Studio</a>에 접속하여 구글 계정으로 로그인합니다.</p>
+              <p>2. 화면 중앙의 [Create API key] 버튼을 누릅니다.</p>
+              <p>3. 생성된 키(AIzaSy로 시작)를 복사하여 위 API Key 입력칸에 붙여넣습니다.</p>
+              <p>4. [Ping 테스트]를 눌러 정상이면 [설정 저장하기]를 클릭합니다. 무료 티어로 매일 수천 건의 고품질 분석을 이용할 수 있습니다.</p>
+            </div>
+          </details>
+
+          <details class="group bg-white rounded-2xl border border-slate-200/90 p-4 text-xs shadow-2xs">
+            <summary class="font-bold text-slate-800 cursor-pointer flex items-center justify-between">
+              <span class="flex items-center gap-2">
+                <i class="fa-solid fa-circle-question text-emerald-500"></i>
+                <span>구글 스프레드시트 3분 연동 상세 가이드</span>
+              </span>
+              <i class="fa-solid fa-chevron-down text-slate-400 group-open:rotate-180 transition-transform"></i>
+            </summary>
+            <div class="mt-3 text-slate-600 space-y-1.5 pl-3 border-l-2 border-emerald-400 leading-relaxed">
+              <p>1. <a href="https://sheets.google.com" target="_blank" class="text-emerald-600 font-bold underline">Google Sheets</a>에서 새 스프레드시트를 생성합니다.</p>
+              <p>2. 상단 메뉴 [확장 프로그램] ➔ [Apps Script]를 클릭합니다.</p>
+              <p>3. 위 [코드 전체 복사] 버튼을 눌러 코드를 복사한 뒤 Apps Script 편집창에 모두 붙여넣습니다.</p>
+              <p>4. 우측 상단 [배포] ➔ [새 배포] 클릭 ➔ 유형: [웹 앱] 선택.</p>
+              <p>5. <strong>액세스 권한: '모든 사용자(Anyone)'</strong>로 설정 후 배포합니다.</p>
+              <p>6. 생성된 웹 앱 URL을 위 입력란에 붙여넣고 [설정 저장하기]를 누르면 완료됩니다.</p>
+            </div>
+          </details>
+        </div>
+
+        <!-- Bottom Save Action -->
+        <div class="flex justify-end pt-2 pb-6">
+          <button onclick="handleSaveSettings()" class="px-6 py-3 text-xs font-bold rounded-xl bg-blue-600 hover:bg-blue-700 text-white flex items-center gap-2 shadow-xs transition-all">
+            <i class="fa-solid fa-floppy-disk"></i>
+            <span>모든 설정 변경사항 저장</span>
+          </button>
+        </div>
+      </div>
+      <!-- ================= /PAGE VIEW 4: 설정 & 연동 관리 종료 ================= -->
+
+    </main>
+
+    <!-- ─── MODAL 6: 나만의 장소 직접 등록 모달 ─── -->
+    <div id="custom-place-modal" class="modal-backdrop fixed inset-0 z-50 bg-slate-900/60 backdrop-blur-xs hidden items-center justify-center p-4">
+      <div class="bg-white w-full max-w-lg rounded-3xl shadow-2xl border border-slate-200 overflow-hidden flex flex-col max-h-[90vh]">
+        <div class="px-6 py-4 border-b border-slate-100 flex items-center justify-between bg-slate-50">
+          <div class="flex items-center gap-2">
+            <div class="w-8 h-8 rounded-xl bg-blue-500/10 text-blue-600 flex items-center justify-center">
+              <i class="fa-solid fa-map-location-dot"></i>
+            </div>
+            <div>
+              <h3 class="text-sm font-extrabold text-slate-900">나만의 장소 직접 코스에 등록</h3>
+              <p class="text-[11px] text-slate-500">숨은 명소나 특별한 맛집을 직접 입력하여 이번 글쓰기 코스에 추가합니다.</p>
+            </div>
+          </div>
+          <button onclick="closeModal('custom-place-modal')" class="text-slate-400 hover:text-slate-600 p-1">
+            <i class="fa-solid fa-xmark"></i>
+          </button>
+        </div>
+
+        <div class="p-6 overflow-y-auto space-y-4 text-xs">
+          <div class="grid grid-cols-3 gap-3">
+            <div class="col-span-2 space-y-1">
+              <label class="block font-bold text-slate-700">장소명 / 상호명 <span class="text-rose-500">*</span></label>
+              <input id="cp-name-input" type="text" placeholder="예: 한담해변 산책로, 흑돼지 돈사돈" class="w-full px-3 py-2 border border-slate-200 rounded-xl font-semibold focus:outline-none focus:ring-2 focus:ring-blue-500/20">
+            </div>
+            <div class="space-y-1">
+              <label class="block font-bold text-slate-700">카테고리</label>
+              <select id="cp-category-input" class="w-full px-3 py-2 border border-slate-200 rounded-xl focus:outline-none font-medium">
+                <option value="sightseeing">🏛️ 관광지/명소</option>
+                <option value="food">🍽️ 대표 맛집</option>
+                <option value="cafe">☕ 감성 카페</option>
+                <option value="photo">📸 인생샷/뷰</option>
+              </select>
+            </div>
+          </div>
+
+          <div class="space-y-1">
+            <label class="block font-bold text-slate-700">추천 이유 (왜 이 글에 넣어야 하는가?) <span class="text-rose-500">*</span></label>
+            <textarea id="cp-why-input" rows="2" placeholder="예: 에메랄드빛 바다를 끼고 걷는 최고의 해안 둘레길로 일몰 때 특히 황홀한 뷰를 자랑함" class="w-full px-3 py-2 border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-blue-500/20"></textarea>
+          </div>
+
+          <div class="space-y-1">
+            <label class="block font-bold text-slate-700">대표 메뉴 구성 또는 주요 볼거리</label>
+            <input id="cp-features-input" type="text" placeholder="예: 흑돼지 근고기, 김치찌개 / 산책로, 투명카약 체험" class="w-full px-3 py-2 border border-slate-200 rounded-xl focus:outline-none">
+          </div>
+
+          <div class="grid grid-cols-1 sm:grid-cols-2 gap-3">
+            <div class="space-y-1">
+              <label class="block font-bold text-slate-700">주소지 / 위치</label>
+              <input id="cp-address-input" type="text" placeholder="예: 제주 제주시 애월읍 애월로 11" class="w-full px-3 py-2 border border-slate-200 rounded-xl focus:outline-none">
+            </div>
+            <div class="space-y-1">
+              <label class="block font-bold text-slate-700">운영시간 및 꿀팁</label>
+              <input id="cp-hours-input" type="text" placeholder="예: 매일 10:00~21:00 / 일몰 30분 전 방문 추천" class="w-full px-3 py-2 border border-slate-200 rounded-xl focus:outline-none">
+            </div>
+          </div>
+        </div>
+
+        <div class="px-6 py-3.5 bg-slate-50 border-t border-slate-200 flex justify-end gap-2">
+          <button onclick="closeModal('custom-place-modal')" class="px-4 py-2 text-xs font-semibold text-slate-600 rounded-xl hover:bg-slate-200">취소</button>
+          <button onclick="handleSaveCustomPlace()" class="px-5 py-2 text-xs font-bold text-white bg-blue-600 hover:bg-blue-700 rounded-xl shadow-xs">코스에 추가하기</button>
+        </div>
+      </div>
+    </div>
+
+
+    <!-- Toast Notification Container -->
+    <div id="toast-container" class="fixed bottom-5 right-5 z-50 flex flex-col gap-2 max-w-sm pointer-events-none">
+      <!-- Dynamic Toasts -->
+    </div>
+
+    <!-- Application Script Files -->
+    <script src="/src/gasCode.js"></script>
+    <script src="/src/defaultData.js"></script>
+    <script src="/src/api.js"></script>
+    <script src="/src/storage.js"></script>
+    <script src="/src/generators.js"></script>
+    <script src="/src/app.js"></script>
+
+    <script>
+      // Additional modal helper for GAS code modal
+      function openGasCodeModal() {
+        const ta = document.getElementById('gas-code-textarea');
+        if (ta && window.GAS_CODE_TEMPLATE) {
+          ta.value = window.GAS_CODE_TEMPLATE;
+        }
+        openModal('gas-code-modal');
+      }
+
+      function copyCurrentTabContent() {
+        let text = '';
+        if (AppState.activeOutputTab === 'markdown') {
+          text = document.getElementById('article-editor-textarea')?.value || '';
+        } else if (AppState.activeOutputTab === 'html') {
+          text = document.getElementById('article-html-output')?.value || '';
+        } else {
+          text = document.getElementById('article-html-output')?.value || '';
+        }
+        copyText(text);
+      }
+    </script>
+  </body>
+</html>
