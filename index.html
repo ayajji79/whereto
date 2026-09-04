@@ -1118,13 +1118,3373 @@
       <!-- Dynamic Toasts -->
     </div>
 
-    <!-- Application Script Files -->
-    <script src="/src/gasCode.js"></script>
-    <script src="/src/defaultData.js"></script>
-    <script src="/src/api.js"></script>
-    <script src="/src/storage.js"></script>
-    <script src="/src/generators.js"></script>
-    <script src="/src/app.js"></script>
+    <script>
+
+/* src/gasCode.js */
+/**
+ * Google Apps Script (GAS) 코드 템플릿
+ * 구글 스프레드시트에 여행 블로그 대시보드 데이터를 실시간 영구 보관/조회하는 웹앱 코드
+ */
+window.GAS_CODE_TEMPLATE = `/**
+ * 여행 블로그 올인원 대시보드 Google Apps Script 연동 코드
+ * 
+ * [배포 방법]
+ * 1. 새 구글 스프레드시트 생성 (제목: 여행블로그_콘텐츠_DB)
+ * 2. 상단 메뉴 [확장 프로그램] > [Apps Script] 클릭
+ * 3. 기존 코드를 모두 지우고 이 코드를 전체 붙여넣기
+ * 4. 우측 상단 [배포] > [새 배포] 클릭
+ * 5. 유형 선택: [웹 앱] (톱니바퀴 아이콘)
+ * 6. 설정:
+ *    - 설명: 여행 블로그 DB v1
+ *    - 다음 사용자 권한으로 실행: '나(내 계정)'
+ *    - 액세스 권한이 있는 사용자: '모든 사용자(Anyone)' (반드시 선택!)
+ * 7. [배포] 버튼 클릭 후 생성된 [웹 앱 URL]을 복사하여 대시보드 설정창에 입력
+ */
+
+function doGet(e) {
+  var action = e.parameter.action || 'ping';
+  var ss = SpreadsheetApp.getActiveSpreadsheet();
+  
+  if (action === 'ping') {
+    return jsonResponse({ status: 'ok', message: '스프레드시트가 성공적으로 연결되었습니다.', timestamp: new Date().toISOString() });
+  }
+  
+  if (action === 'getHistory') {
+    var sheet = getOrCreateSheet(ss, 'History', ['ID', '일시', '지역', '장소명', '테마', 'SEO키워드', '메타설명', '마스터프롬프트', '본문내용', 'SNS패키지']);
+    var data = sheet.getDataRange().getValues();
+    if (data.length <= 1) return jsonResponse({ status: 'ok', data: [] });
+    
+    var headers = data[0];
+    var rows = [];
+    for (var i = 1; i < data.length; i++) {
+      var obj = {};
+      for (var j = 0; j < headers.length; j++) {
+        obj[headers[j]] = data[i][j];
+      }
+      rows.push(obj);
+    }
+    return jsonResponse({ status: 'ok', data: rows });
+  }
+
+  if (action === 'getQuickLinks') {
+    var sheet = getOrCreateSheet(ss, 'QuickLinks', ['id', 'title', 'url', 'category', 'icon']);
+    var data = sheet.getDataRange().getValues();
+    if (data.length <= 1) return jsonResponse({ status: 'ok', data: [] });
+    var headers = data[0];
+    var rows = [];
+    for (var i = 1; i < data.length; i++) {
+      var item = {};
+      for (var j = 0; j < headers.length; j++) {
+        item[headers[j]] = data[i][j];
+      }
+      rows.push(item);
+    }
+    return jsonResponse({ status: 'ok', data: rows });
+  }
+
+  return jsonResponse({ status: 'error', message: '알 수 없는 요청입니다.' });
+}
+
+function doPost(e) {
+  try {
+    var ss = SpreadsheetApp.getActiveSpreadsheet();
+    var postData = JSON.parse(e.postData.contents);
+    var action = postData.action;
+
+    if (action === 'ping') {
+      return jsonResponse({ status: 'ok', message: 'POST Ping 성공' });
+    }
+
+    if (action === 'saveHistory') {
+      var sheet = getOrCreateSheet(ss, 'History', ['ID', '일시', '지역', '장소명', '테마', 'SEO키워드', '메타설명', '마스터프롬프트', '본문내용', 'SNS패키지']);
+      var item = postData.data;
+      var row = [
+        item.id || ('H_' + new Date().getTime()),
+        item.createdAt || Utilities.formatDate(new Date(), "Asia/Seoul", "yyyy-MM-dd HH:mm:ss"),
+        item.location || '',
+        item.placeName || '',
+        item.theme || '',
+        item.seoKeywords || '',
+        item.metaDescription || '',
+        item.masterPrompt || '',
+        item.articleContent || '',
+        JSON.stringify(item.snsPackage || {})
+      ];
+      sheet.appendRow(row);
+      return jsonResponse({ status: 'ok', message: '히스토리가 구글 시트에 안전하게 저장되었습니다.', id: row[0] });
+    }
+
+    if (action === 'saveQuickLinks') {
+      var sheet = getOrCreateSheet(ss, 'QuickLinks', ['id', 'title', 'url', 'category', 'icon']);
+      // 기존 데이터 초기화 후 재작성
+      sheet.clearContents();
+      sheet.appendRow(['id', 'title', 'url', 'category', 'icon']);
+      var links = postData.data || [];
+      for (var i = 0; i < links.length; i++) {
+        sheet.appendRow([links[i].id, links[i].title, links[i].url, links[i].category, links[i].icon]);
+      }
+      return jsonResponse({ status: 'ok', message: '퀵 링크가 스프레드시트에 동기화되었습니다.' });
+    }
+
+    return jsonResponse({ status: 'error', message: '지원하지 않는 Action입니다.' });
+  } catch (err) {
+    return jsonResponse({ status: 'error', message: err.toString() });
+  }
+}
+
+function getOrCreateSheet(ss, sheetName, headers) {
+  var sheet = ss.getSheetByName(sheetName);
+  if (!sheet) {
+    sheet = ss.insertSheet(sheetName);
+    if (headers && headers.length > 0) {
+      sheet.appendRow(headers);
+      var headerRange = sheet.getRange(1, 1, 1, headers.length);
+      headerRange.setBackground('#2563EB').setFontColor('#FFFFFF').setFontWeight('bold');
+      sheet.setFrozenRows(1);
+    }
+  }
+  return sheet;
+}
+
+function jsonResponse(obj) {
+  return ContentService.createTextOutput(JSON.stringify(obj))
+    .setMimeType(ContentService.MimeType.JSON);
+}
+`;
+
+
+/* src/defaultData.js */
+/**
+ * 여행 블로그 기본 데이터 및 프리셋
+ */
+window.DEFAULT_DATA = {
+  quickLinks: [
+    { id: 'ql-1', title: '티스토리 관리자', url: 'https://www.tistory.com/member/blog', category: '블로그', icon: 'fa-solid fa-pen-nib' },
+    { id: 'ql-2', title: '워드프레스', url: 'https://wordpress.com/posts', category: '블로그', icon: 'fa-brands fa-wordpress' },
+    { id: 'ql-3', title: '네이버 블로그', url: 'https://blog.naver.com', category: '블로그', icon: 'fa-solid fa-n' },
+    { id: 'ql-4', title: '구글 스프레드시트', url: 'https://sheets.google.com', category: '데이터', icon: 'fa-solid fa-table-cells' },
+    { id: 'ql-5', title: 'Canva 썸네일', url: 'https://www.canva.com', category: '디자인', icon: 'fa-solid fa-palette' },
+    { id: 'ql-6', title: '미드저니 (Midjourney)', url: 'https://www.midjourney.com', category: 'AI 이미지', icon: 'fa-solid fa-wand-magic-sparkles' },
+    { id: 'ql-7', title: '구글 AI Studio', url: 'https://aistudio.google.com', category: 'AI 설정', icon: 'fa-solid fa-robot' },
+    { id: 'ql-8', title: 'Unsplash 무료이미지', url: 'https://unsplash.com', category: '에셋', icon: 'fa-solid fa-camera' }
+  ],
+
+  tonePresets: [
+    {
+      id: 'friendly',
+      name: '친근한 2030 여행러',
+      badge: '인기',
+      description: '발랄하고 공감대 높은 문체, 적절한 이모지 사용, 솔직 담백한 내돈내산 후기 느낌',
+      promptModifier: '말투는 2030 세대에게 친근하고 다정한 대화체(~해요, ~더라고요!)를 유지하고, 상황에 맞는 귀여운 이모지를 문단마다 1~2개 배치해줘. 내돈내산 솔직 리뷰처럼 생생한 현장감과 소소한 꿀팁을 포함해줘.'
+    },
+    {
+      id: 'expert',
+      name: '전문 여행 에디터 / 가이드',
+      badge: '신뢰도 높은',
+      description: '동선, 주차, 비용, 역사적 배경 등 정확하고 전문적인 가이드 포맷',
+      promptModifier: '전문 여행 잡지 에디터처럼 신뢰감 있고 깔끔하며 정제된 어조(~합니다, ~바랍니다)로 서술해줘. 장소의 역사나 배경, 최적의 방문 시간대, 상세 동선, 경비 절약 팁을 체계적인 소제목과 글머리 기호로 정리해줘.'
+    },
+    {
+      id: 'emotional',
+      name: '감성 여행 에세이',
+      badge: '감성 충만',
+      description: '풍경 묘사와 개인적 사색이 돋보이는 서정적이고 감각적인 문체',
+      promptModifier: '문학적인 감성 여행 수필처럼 서정적이고 여운이 남는 감각적인 문체(~했다, ~였다)로 써줘. 빛의 변화, 바람의 냄새, 공간이 주는 정서적 울림과 여행지에서의 깊은 사색을 아름다운 묘사로 채워줘.'
+    },
+    {
+      id: 'practical',
+      name: '실속 뚜벅이 & 가성비 공략',
+      badge: '초실용적',
+      description: '대중교통, 도보 이동 경로, 예약 꿀팁, 웨이팅 방지 중심의 실용 포맷',
+      promptModifier: '뚜벅이 여행자와 알뜰 여행자를 위한 초실용 정보 중심의 빠르고 명쾌한 스타일로 작성해줘. 지하철/버스 노선, 도보 분수, 웨이팅 줄이는 팁, 할인 혜택 등 실패 없는 실전 노하우를 우선 배치해줘.'
+    }
+  ],
+
+  travelThemes: [
+    { id: 'date', name: '연인과 감성 데이트', category: 'outing', desc: '분위기 맛집 + 감성카페 + 인생샷' },
+    { id: 'healing', name: '주말 힐링 나들이', category: 'outing', desc: '공원/숲 + 여유로운 브런치 산책' },
+    { id: 'oneday', name: '하루 알짜 당일치기 코스', category: 'outing', desc: '오전 관광 + 점심 맛집 + 오후 카페' },
+    { id: 'drive', name: '감성 핫플 드라이브', category: 'outing', desc: '탁 트인 뷰 + 대형 베이커리 카페' },
+    { id: 'night', name: '퇴근 후 저녁 나들이 & 야경', category: 'outing', desc: '심야 맛집 + 야경 명소 데이트' },
+    { id: 'rainy', name: '비 오는 날 실내 감성 투어', category: 'outing', desc: '실내 전시/미술관 + 온실카페' },
+    { id: 'family', name: '아이/부모님 동반 가족 나들이', category: 'outing', desc: '체험/자연 + 편안한 식당' },
+    { id: 'trip1n2d', name: '1박 2일 알찬 주말 여행', category: 'travel', desc: '권역별 핵심 동선 분배' },
+    { id: 'trip2n3d', name: '2박 3일 이상 완전 정복', category: 'travel', desc: '명소 & 로컬 식도락 완벽 정복' },
+    { id: 'walk', name: '실속 뚜벅이 & 로컬 맛집 탐방', category: 'travel', desc: '대중교통/도보 최적화' }
+  ],
+
+  // 지식 베이스: 지역별 상세 추천 명소 (리스트형 블로그 작성용 상세 메타 포함)
+  travelSpotsKB: {
+    '제주': {
+      sightseeing: [
+        {
+          id: 'jj-s1',
+          name: '성산일출봉',
+          category: 'sightseeing',
+          whyRecommend: '유네스코 3관왕에 빛나는 제주의 상징적 랜드마크로, 탁 트인 동쪽 해안선과 분화구의 웅장함을 마주할 수 있어 첫 방문자에게 필수 코스입니다.',
+          features: '해발 180m 정상 트레킹(소요시간 왕복 50분), 잔디 분화구 전망, 일출 포인트, 해녀 물질 공연',
+          address: '제주 서귀포시 성산읍 일출로 284-12',
+          operatingHours: '매일 07:00~19:00 (동절기 07:30~18:00 / 매월 첫째 주 월요일 휴무) | 무료 주차장 완비',
+          recommendStats: '블로그 리뷰 12,000+건 | 네이버 평점 4.6 | 방문자 선호도 1위 랜드마크'
+        },
+        {
+          id: 'jj-s2',
+          name: '협재해수욕장 & 한림공원',
+          category: 'sightseeing',
+          whyRecommend: '에메랄드빛 투명한 바다와 정면의 비양도가 어우러져 제주 서쪽에서 가장 이국적이고 아름다운 바다 색감을 자랑합니다.',
+          features: '완만한 백사장, 비양도 뷰 포토존, 야자수 길 산책, 한림공원 아열대 식물원 연계 코스',
+          address: '제주 제주시 한림읍 한림로 329-10',
+          operatingHours: '연중무휴 상시 개방 (샤워시설 및 편의시설 구비) | 공영 주차장 운영',
+          recommendStats: '블로그 리뷰 8,900+건 | 일몰 감상 및 물놀이 만족도 최상위'
+        },
+        {
+          id: 'jj-s3',
+          name: '사려니숲길',
+          category: 'sightseeing',
+          whyRecommend: '피톤치드 가득한 삼나무 숲길을 천천히 걸으며 일상의 피로를 씻어내는 힐링 트레킹의 성지입니다.',
+          features: '울창한 삼나무 군락, 완만한 무장애 덱길(유모차/휠체어 가능), 비 오는 날 몽환적인 안개 포토존',
+          address: '제주 제주시 조천읍 교래리 산 137-1',
+          operatingHours: '매일 09:00~17:00 (기상 악화 시 통제) | 붉은오름 출입구 무료 주차',
+          recommendStats: '블로그 리뷰 7,400+건 | 힐링 및 자연 산책 키워드 1위'
+        }
+      ],
+      food: [
+        {
+          id: 'jj-f1',
+          name: '숙성도 노형본점',
+          category: 'food',
+          whyRecommend: '교차 숙성 공법으로 흑돼지 특유의 육즙과 풍미를 극한으로 끌어올려 전국 여행자들의 필수 미식 성지로 꼽힙니다.',
+          features: '대표메뉴: 720 숙성 뼈등심, 960 숙성 뼈목살, 갈치속젓 볶음밥, 흑돼지 김치찌개 (1인 2~3만원대)',
+          address: '제주 제주시 원노형로 41 (노형동 929-1)',
+          operatingHours: '매일 11:30~22:00 (브레이크타임 14:30~16:00) | 캐치테이블 원격 줄서기 필수',
+          recommendStats: '블로그 리뷰 6,500+건 | 방송 다수 출연 | 웨이팅 아깝지 않은 흑돼지 1위'
+        },
+        {
+          id: 'jj-f2',
+          name: '우진해장국',
+          category: 'food',
+          whyRecommend: '잘게 찢은 고사리와 돼지고기를 메밀가루와 함께 걸쭉하게 끓여낸 제주만의 독보적인 향토 음식입니다.',
+          features: '대표메뉴: 고사리육개장(10,000원), 몸국, 사골해장국, 녹두빈대떡 (든든한 아침 해장 추천)',
+          address: '제주 제주시 서사로 11 (삼도2동 831)',
+          operatingHours: '매일 06:00~22:00 (연중무휴) | 현장 번호표 발권(아침 일찍 방문 추천), 공영주차장 이용',
+          recommendStats: '블로그 리뷰 9,800+건 | 제주 공항 근처 아침 식사 만족도 부동의 1위'
+        },
+        {
+          id: 'jj-f3',
+          name: '명진전복',
+          category: 'food',
+          whyRecommend: '수요미식회에 소개된 세화 해안도로의 전복 요리 전문점으로, 버터 향 가득한 전복돌솥밥과 바다 뷰를 동시에 즐깁니다.',
+          features: '대표메뉴: 전복돌솥밥(15,000원), 전복구이, 전복죽 (돌솥 누룽지 숭늉 별미)',
+          address: '제주 제주시 구좌읍 해맞이해안로 1282',
+          operatingHours: '09:30~21:30 (라스트오더 20:30 / 매주 화요일 정기휴무) | 해안도로 전면 주차',
+          recommendStats: '블로그 리뷰 5,200+건 | 제주 동쪽 해안 드라이브 필수 식당'
+        }
+      ],
+      cafe: [
+        {
+          id: 'jj-c1',
+          name: '원앤온리 (ONE AND ONLY)',
+          category: 'cafe',
+          whyRecommend: '뒤로는 웅장한 산방산 절벽, 앞으로는 시원한 황우치 해변을 품은 제주 남부 독보적인 배산임수 뷰맛집 카페입니다.',
+          features: '시그니처: 산방산 케이크, 바나나 크럼블, 원앤온리 브런치 플레이트 | 야외 야자수 빈백 좌석',
+          address: '제주 서귀포시 안덕면 산방로 141',
+          operatingHours: '매일 09:00~20:00 (라스트오더 19:30) | 대형 전용 주차장 구비',
+          recommendStats: '블로그 리뷰 7,800+건 | 인스타그램 해시태그 10만+건 뷰맛집'
+        },
+        {
+          id: 'jj-c2',
+          name: '더클리프 중문',
+          category: 'cafe',
+          whyRecommend: '중문 색달해변 절벽 위에 위치하여 환상적인 서핑 비치 뷰와 이국적인 발리풍 라운지 분위기, DJ 공연을 즐길 수 있습니다.',
+          features: '시그니처: 클리프 피자, 색달 비치 에이드, 수제 수제버거, 시그니처 칵테일',
+          address: '제주 서귀포시 중문관광로 154-17',
+          operatingHours: '평일 10:00~01:00 / 주말 10:00~02:00 | 중문관광단지 퍼시픽랜드 주차',
+          recommendStats: '블로그 리뷰 6,100+건 | 제주 일몰 노을 명소 1순위'
+        },
+        {
+          id: 'jj-c3',
+          name: '인스밀 (INSMILL)',
+          category: 'cafe',
+          whyRecommend: '제주 전통 방앗간 건물을 감각적으로 재해석하여 보리밭과 야자수, 거친 현무암의 로컬 정취를 온전히 담아낸 감성 카페입니다.',
+          features: '시그니처: 보리개역(제주 미숫가루 음료), 보리과립 소프트아이스크림, 마늘빵',
+          address: '제주 서귀포시 대정읍 일과대수로 27',
+          operatingHours: '매일 10:30~19:30 (하절기 20:30까지) | 바다 앞 주차 가능',
+          recommendStats: '블로그 리뷰 4,300+건 | 건축 인테리어 & 감성 사진 명소'
+        }
+      ],
+      photo: [
+        {
+          id: 'jj-p1',
+          name: '안돌오름 비밀의숲',
+          category: 'photo',
+          whyRecommend: '하늘 높이 뻗은 편백나무 숲과 민트색 빈티지 푸드트럭이 동화 속 한 장면 같은 몽환적인 인생샷을 선사합니다.',
+          features: '민트색 푸드트럭 포토존, 나홀로나무, 편백나무 오솔길, 메밀밭 뷰포인트',
+          address: '제주 제주시 구좌읍 송당리 2173',
+          operatingHours: '매일 09:00~18:30 (입장료 성인 3,000원 / 비포장도로 주의) | 주차 가능',
+          recommendStats: '블로그 리뷰 5,700+건 | 스냅 웨딩 촬영 및 감성 커플샷 성지'
+        },
+        {
+          id: 'jj-p2',
+          name: '도두동 무지개해안도로',
+          category: 'photo',
+          whyRecommend: '제주 공항 바로 뒤편 해안도로를 따라 알록달록 무지개색 방호벽이 이어져, 도착 직후나 출발 전 가볍게 인생샷을 남기기 좋습니다.',
+          features: '무지개 방호벽 점프샷, 도두봉 키세스존(도보 10분 연계), 비행기 착륙 관람',
+          address: '제주 제주시 도두일동 1734',
+          operatingHours: '연중무휴 24시간 상시 개방 | 갓길 및 도두항 공영주차장 이용',
+          recommendStats: '블로그 리뷰 4,900+건 | 공항 근처 첫날/마지막날 필수 인증샷'
+        }
+      ]
+    },
+    '서울': {
+      sightseeing: [
+        {
+          id: 'se-s1',
+          name: '서울숲 & 성수동 카페거리',
+          category: 'sightseeing',
+          whyRecommend: '사계절 푸른 녹음과 연못이 어우러진 대형 도심 공원 산책 후, 붉은 벽돌 감성의 팝업스토어와 편집숍을 둘러보는 2030 데이트/나들이 1순위 코스입니다.',
+          features: '거울연못 반영 포토존, 은행나무 숲길, 성수 아틀리에길 디자이너 샵 & 팝업스토어 투어',
+          address: '서울 성동구 뚝섬로 273 (서울숲역 3번 출구/뚝섬역 8번 출구)',
+          operatingHours: '서울숲 24시간 연중무휴 무료 개방 | 공영주차장 완비(주말 대중교통 권장)',
+          recommendStats: '네이버 지도 저장 35,000+ | 방문자 리뷰 28,000+건 | 데이트/나들이 검색 1위'
+        },
+        {
+          id: 'se-s2',
+          name: '연남동 경의선 숲길 (연트럴파크)',
+          category: 'sightseeing',
+          whyRecommend: '옛 철길을 따라 조성된 도심 속 잔디 산책로로, 골목골목 아기자기한 독립서점과 소품샵, 빈티지 샵이 즐비해 연인 산책에 최적입니다.',
+          features: '철길 잔디밭 피크닉, 동진시장 레트로 골목 투어, 개성 있는 독립 디자인 소품샵',
+          address: '서울 마포구 연남동 257-4 (홍대입구역 3번 출구 바로 앞)',
+          operatingHours: '24시간 상시 개방 | 홍대입구역 도보 접근',
+          recommendStats: '네이버 지도 저장 28,000+ | 주말 연인 나들이 선호도 최상위'
+        }
+      ],
+      food: [
+        {
+          id: 'se-f1',
+          name: '소문난성수감자탕',
+          category: 'food',
+          whyRecommend: '백종원의 3대천왕과 성시경의 먹을텐데에 소개된 성수동의 전설적인 맛집으로, 살코기가 듬뿍 붙은 야들야들한 뼈다귀와 개운하고 깊은 육수가 일품입니다.',
+          features: '대표메뉴: 감자탕(소 29,000원), 뚝배기 감자국, 수제비 사리 직접 뜯어 넣기, 볶음밥 필수',
+          address: '서울 성동구 연무장길 45 (성수역 4번 출구 도보 3분)',
+          operatingHours: '연중무휴 24시간 영업 | 식사 피크타임 웨이팅 20~40분 (회전율 빠름)',
+          recommendStats: '네이버 지도 저장 19,000+ | 방문자 영수증 리뷰 11,000+건 | 찐 로컬 노포 1위'
+        },
+        {
+          id: 'se-f2',
+          name: '연남토마 본점 (연남동 데이트 맛집)',
+          category: 'food',
+          whyRecommend: '화사한 주택을 개조한 감성적인 인테리어와 정갈한 퓨전 덮밥, 바질 파스타로 연인들 데이트 점심 식사로 실패가 없는 명소입니다.',
+          features: '대표메뉴: 명란 바질오일 파스타(16,000원), 믹스덮밥, 가츠덮밥, 안심가츠 정식',
+          address: '서울 마포구 월드컵북로6길 61 (홍대입구역 2번 출구 도보 7분)',
+          operatingHours: '매일 11:30~21:30 (라스트오더 20:30, 브레이크타임 없음)',
+          recommendStats: '네이버 지도 저장 14,000+ | 방문자 리뷰 6,500+건 | 연남동 데이트 코스 대표'
+        }
+      ],
+      cafe: [
+        {
+          id: 'se-c1',
+          name: '텅 성수 (TONGUE Planet)',
+          category: 'cafe',
+          whyRecommend: '독창적인 아트 오브제와 감각적인 가구, 이색적인 디저트로 SNS 인증샷을 유발하는 성수동의 대표 핫플레이스 복합 문화 카페입니다.',
+          features: '시그니처: 이모지 케이크(혀 모양 시그니처 디저트), 텅 라떼, 감각적인 조명과 거울 셀카존',
+          address: '서울 성동구 성수이로 82 2층 (성수역 3번 출구 도보 2분)',
+          operatingHours: '매일 10:00~21:00 (연중무휴)',
+          recommendStats: '네이버 지도 저장 12,000+ | 인스타그램 감성 태그 5만+건 | 성수 힙플 1위'
+        },
+        {
+          id: 'se-c2',
+          name: '레이어드 연남 (Cafe Layered)',
+          category: 'cafe',
+          whyRecommend: '영국 런던의 베이커리 숍을 그대로 옮겨놓은 듯한 따뜻한 빈티지 유럽풍 감성과 십수 종의 정통 수제 스콘, 케이크가 눈과 입을 사로잡습니다.',
+          features: '시그니처: 바질 스콘, 얼그레이 스콘, 당근 케이크, 런던 버터 스콘',
+          address: '서울 마포구 성미산로 161-4',
+          operatingHours: '매일 11:00~22:00 (포장 손님 많음)',
+          recommendStats: '네이버 지도 저장 16,000+ | 블로그 후기 7,200+건 | 스콘 & 디저트 성지'
+        }
+      ],
+      photo: [
+        {
+          id: 'se-p1',
+          name: '뚝섬 한강공원 & 자벌레 (일몰 피크닉)',
+          category: 'photo',
+          whyRecommend: '시원한 한강 바람과 청담대교의 야경, 돗자리를 펴고 라면과 치맥을 즐기며 붉은 노을을 담아내는 대한민국 대표 힐링 나들이 스팟입니다.',
+          features: '한강 피크닉 세트 대여, 한강 즉석 라면 기계 체험, 청담대교 조명 야경 샷',
+          address: '서울 광진구 강변북로 139 (뚝섬유원지역 2/3번 출구 직결)',
+          operatingHours: '24시간 상시 개방 (일몰 골든아워 18:00~19:30 추천)',
+          recommendStats: '네이버 지도 저장 42,000+ | 주말 한강 나들이 만족도 1위'
+        }
+      ]
+    },
+    '강릉': {
+      sightseeing: [
+        {
+          id: 'gn-s1',
+          name: '안목해변 & 강릉 커피거리',
+          category: 'sightseeing',
+          whyRecommend: '푸른 동해 바다를 바라보며 향긋한 핸드드립 커피와 디저트를 즐길 수 있는 대한민국 대표 커피 성지이자 바다 산책로입니다.',
+          features: '해안선 따라 늘어선 오션뷰 통창 카페거리, 모래사장 바다 포토존, 안목 방파제 빨간 등대 산책',
+          address: '강원 강릉시 창해로14번길 20-1 (견소동 286)',
+          operatingHours: '연중무휴 24시간 바다 개방 | 안목해변 공영주차장 무료 이용',
+          recommendStats: '네이버 지도 저장 26,000+ | 방문자 리뷰 22,000+건 | 강릉 여행 필수 1순위'
+        },
+        {
+          id: 'gn-s2',
+          name: '경포호수 & 경포생태습지원 (자전거 나들이)',
+          category: 'sightseeing',
+          whyRecommend: '잔잔한 호수를 따라 4.3km의 둘레길이 완벽하게 정비되어 2인용 커플 자전거를 타며 연인, 가족과 여유를 즐기기 최적입니다.',
+          features: '2인승/4인승 패밀리 자전거 대여, 봄 벚꽃터널, 가을 갈대밭, 솔숲 산책로',
+          address: '강원 강릉시 저동 94',
+          operatingHours: '상시 개방 (자전거 대여점 09:00~19:00 운영)',
+          recommendStats: '네이버 지도 저장 18,000+ | 힐링 자전거 나들이 만족도 최상'
+        }
+      ],
+      food: [
+        {
+          id: 'gn-f1',
+          name: '동화가든 본점 (원조 짬순)',
+          category: 'food',
+          whyRecommend: '초당 순두부마을의 명실상부한 1위 식당으로, 불향 가득한 얼큰한 해물 짬뽕 국물에 몽글몽글 고소한 순두부를 넣어 해장과 식사에 최고입니다.',
+          features: '대표메뉴: 원조짬순(13,000원), 초원순두부, 모두부 반모 (식후 순두부 젤라또 연계)',
+          address: '강원 강릉시 초당원길 17 (초당동 233-1)',
+          operatingHours: '08:30~19:00 (브레이크타임 16:00~17:00 / 매주 수요일 정기휴무)',
+          recommendStats: '네이버 지도 저장 32,000+ | 방문자 영수증 리뷰 18,000+건 | 테이블링 필수'
+        },
+        {
+          id: 'gn-f2',
+          name: '엄지네포장마차 본점',
+          category: 'food',
+          whyRecommend: '접시를 가득 채운 짭조름하고 매콤한 꼬막무침과 참기름 향 솔솔 나는 꼬막 비빔밥의 원조로, 포장해서 숙소나 해변에서 먹기에도 훌륭합니다.',
+          features: '대표메뉴: 꼬막무침비빔밥(35,000원), 육사시미, 오징어순대',
+          address: '강원 강릉시 경강로2255번길 21 (포남동 1159)',
+          operatingHours: '매일 11:00~23:00 (연중무휴) | 전용 주차빌딩 완비',
+          recommendStats: '네이버 지도 저장 24,000+ | 전국구 꼬막 비빔밥의 절대 강자'
+        }
+      ],
+      cafe: [
+        {
+          id: 'gn-c1',
+          name: '테라로사 경포호수점',
+          category: 'cafe',
+          whyRecommend: '호숫가 옆 서점과 카페가 결합된 웅장한 건축물로, 통창 너머로 소나무 숲과 호수를 바라보며 스페셜티 드립 커피를 즐길 수 있습니다.',
+          features: '시그니처: 오늘의 드립 커피, 피칸파이, 레몬치즈케이크, 한길서가 큐레이션 서가',
+          address: '강원 강릉시 난설헌로 145 (포남동 1004-1)',
+          operatingHours: '매일 09:00~21:00 (라스트오더 20:30) | 전용 주차장 구비',
+          recommendStats: '네이버 지도 저장 22,000+ | 강릉 건축미 & 커피 품질 1위'
+        }
+      ],
+      photo: [
+        {
+          id: 'gn-p1',
+          name: '강문해변 액자 포토존 & 솟대다리',
+          category: 'photo',
+          whyRecommend: '새파란 동해 바다를 프레임에 담을 수 있는 대형 사각 액자 조형물과 반지 조형물이 설치되어 연인 커플샷의 필수 코스입니다.',
+          features: '사각 프레임 포토존, 솟대다리 야경 조명, 방파제 테트라포드 뷰',
+          address: '강원 강릉시 강문동 182-1',
+          operatingHours: '24시간 상시 개방 | 강문해변 제1공영주차장 이용',
+          recommendStats: '네이버 지도 저장 15,000+ | 인스타 커플 인생샷 성지'
+        }
+      ]
+    },
+    '부산': {
+      sightseeing: [
+        {
+          id: 'bs-s1',
+          name: '해운대 블루라인파크 & 청사포 다릿돌전망대',
+          category: 'sightseeing',
+          whyRecommend: '동해남부선 폐선 부지를 따라 해안 절벽과 오륙도 바다 절경을 감상하는 알록달록 해변열차 & 스카이캡슐로 부산 최고의 데이트 코스입니다.',
+          features: '스카이캡슐(미포~청사포 2인 탑승 추천), 청사포 슬램덩크 철길 건널목, 다릿돌전망대 투명유리 바닥',
+          address: '부산 해운대구 달맞이길62번길 13 (미포정거장)',
+          operatingHours: '매일 09:30~19:00 (계절별 연장 / 온라인 사전예약 필수)',
+          recommendStats: '네이버 지도 저장 31,000+ | 방문자 리뷰 19,000+건 | 부산 핫플 1위'
+        },
+        {
+          id: 'bs-s2',
+          name: '광안리 해수욕장 & 광안대교 야경',
+          category: 'sightseeing',
+          whyRecommend: '해변에 앉아 화려한 광안대교 LED 라이트업과 주말 드론쇼를 감상하며 맥주 한잔의 낭만을 누릴 수 있는 젊음의 바다입니다.',
+          features: '광안대교 정면 뷰, 주말 저녁 M 드론 라이트쇼, 해변가 감성 펍 & 오션뷰 횟집 거리',
+          address: '부산 수영구 광안해변로 219',
+          operatingHours: '24시간 상시 개방 | 광안대교 점등 일몰 후~자정까지',
+          recommendStats: '네이버 지도 저장 38,000+ | 부산 야경 & 감성 밤바다 1순위'
+        }
+      ],
+      food: [
+        {
+          id: 'bs-f1',
+          name: '해운대암소갈비집',
+          category: 'food',
+          whyRecommend: '1964년부터 이어온 독보적인 양념한우 갈비와 둥근 불판 가장자리에 육수를 붓고 끓여먹는 감자사리가 예술적인 부산 대표 노포입니다.',
+          features: '대표메뉴: 생갈비(조기 품절), 양념갈비(52,000원), 비법 감자사리 사리면 추가 필수',
+          address: '부산 해운대구 중동2로10번길 32-10',
+          operatingHours: '11:30~22:00 (브레이크타임 15:10~16:30) | 테이블링 원격 대기 추천',
+          recommendStats: '네이버 지도 저장 21,000+ | 방문자 리뷰 9,800+건 | 부산 미식의 전설'
+        },
+        {
+          id: 'bs-f2',
+          name: '수변최고돼지국밥 민락본점',
+          category: 'food',
+          whyRecommend: '잡내 하나 없이 진하고 깔끔한 육수에 부드러운 항정살 고기가 뚝배기 가득 들어있는 부산 현지인/여행자 공인 1등 국밥집입니다.',
+          features: '대표메뉴: 항정국밥(12,000원), 고기순대국밥, 맛보기 수육순대',
+          address: '부산 수영구 광안해변로370번길 9-32',
+          operatingHours: '연중무휴 24시간 영업 | 테이블링 원격 줄서기 필수',
+          recommendStats: '네이버 지도 저장 27,000+ | 방문자 영수증 리뷰 14,000+건 | 돼지국밥 1위'
+        }
+      ],
+      cafe: [
+        {
+          id: 'bs-c1',
+          name: '웨이브온 커피 (기장 오션뷰 카페)',
+          category: 'cafe',
+          whyRecommend: '세계 건축상을 수상한 감각적인 건축물과 기장 앞바다를 180도 파노라마로 내려다보는 야외 평상 좌석이 영화 같은 쉼을 제공합니다.',
+          features: '시그니처: 월내 라떼, 풀문 커피 에이드, 바다 앞 잔디밭 빈백 좌석',
+          address: '부산 기장군 장안읍 해맞이로 286',
+          operatingHours: '매일 10:00~24:00 (라스트오더 23:00) | 대형 주차타워 완비',
+          recommendStats: '네이버 지도 저장 29,000+ | 부산 근교 드라이브 뷰맛집 1위'
+        }
+      ],
+      photo: [
+        {
+          id: 'bs-p1',
+          name: '흰여울문화마을 해안터널',
+          category: 'photo',
+          whyRecommend: '영도 절벽 아래 절영해안산책로 터널 안쪽에서 바깥 푸른 바다를 액자 프레임처럼 역광 실루엣으로 담아내는 부산 대표 인생샷 명소입니다.',
+          features: '흰여울 해안터널 실루엣 샷, 알록달록 계단 골목, 절벽 바다 뷰 아기자기한 소품샵',
+          address: '부산 영도구 영선동4가 1044-6',
+          operatingHours: '24시간 상시 개방 (일몰 1시간 전 방문 추천)',
+          recommendStats: '네이버 지도 저장 20,000+ | 스냅 사진 & 감성 산책 1위'
+        }
+      ]
+    },
+    '경주': {
+      sightseeing: [
+        {
+          id: 'gj-s1',
+          name: '황리단길 (황남동 포석로)',
+          category: 'sightseeing',
+          whyRecommend: '전통 한옥 가옥들을 개조한 트렌디한 맛집, 디저트 카페, 독립서점, 레트로 사진관이 골목마다 이어지는 경주 여행의 핵심 명소입니다.',
+          features: '십원빵 원조 길거리 간식, 한옥 골목길 스냅, 개량한복 대여 나들이',
+          address: '경북 경주시 포석로 1080 일대 (황남동)',
+          operatingHours: '상점가 대부분 11:00~21:00 운영 | 대릉원 공영주차장 이용',
+          recommendStats: '네이버 지도 저장 45,000+ | 방문자 리뷰 35,000+건 | 경주 여행 부동의 1위'
+        },
+        {
+          id: 'gj-s2',
+          name: '동궁과 월지 (안압지 야경)',
+          category: 'sightseeing',
+          whyRecommend: '연못 수면에 반사되는 신라 왕궁의 황금빛 전각 조명이 신비롭고 몽환적인 야경을 자아내는 경주의 밤 필수 코스입니다.',
+          features: '호수 반영 반영샷, 연꽃단지 산책로, 첨성대 야경 연계 도보 코스',
+          address: '경북 경주시 원화로 102',
+          operatingHours: '매일 09:00~22:00 (입장마감 21:30 / 일몰 후 조명 점등)',
+          recommendStats: '네이버 지도 저장 33,000+ | 대한민국 야경 100선 대표 명소'
+        }
+      ],
+      food: [
+        {
+          id: 'gj-f1',
+          name: '함양집 보불로점 (한우물회)',
+          category: 'food',
+          whyRecommend: '4대째 90년 전통을 이어온 곳으로, 살얼음 동동 뜬 새콤달콤 매콤한 육수에 신선한 한우 육회와 소면, 밥을 말아 먹는 경주 최고의 별미입니다.',
+          features: '대표메뉴: 한우물회(14,000원), 전통비빔밥, 치즈떡갈비, 묵채',
+          address: '경북 경주시 보불로 189 (하동 301-2)',
+          operatingHours: '10:30~21:00 (브레이크타임 15:00~17:00 / 매주 수, 목 휴무)',
+          recommendStats: '네이버 지도 저장 19,000+ | 방문자 리뷰 11,000+건 | 테이블링 필수'
+        }
+      ],
+      cafe: [
+        {
+          id: 'gj-c1',
+          name: '황남아덴 (한옥 베이커리)',
+          category: 'cafe',
+          whyRecommend: '넓은 전통 한옥 마당과 연못 정원이 조성된 대형 베이커리 카페로, 고즈넉한 대청마루에서 시원한 음료와 수제 빵을 즐길 수 있습니다.',
+          features: '시그니처: 첨성대 쿠키, 경주 달빛 빵, 아덴 블렌드 커피',
+          address: '경북 경주시 사정로 57 (사정동 2-1)',
+          operatingHours: '매일 10:00~22:00 (라스트오더 21:00)',
+          recommendStats: '네이버 지도 저장 14,000+ | 황리단길 대표 한옥 카페'
+        }
+      ],
+      photo: [
+        {
+          id: 'gj-p1',
+          name: '대릉원 목련 포토존',
+          category: 'photo',
+          whyRecommend: '거대한 두 개의 신라 고분 능선 사이에 고고하게 서 있는 하얀 목련 나무가 한 폭의 동양화 같은 사진을 완성해줍니다.',
+          features: '고분 사이 나홀로 목련나무 구도, 사계절 잔디 능선, 돌담길 산책',
+          address: '경북 경주시 황남동 31-1 (대릉원 내부)',
+          operatingHours: '매일 09:00~22:00 (대릉원 무료입장 / 천마총 별도)',
+          recommendStats: '네이버 지도 저장 28,000+ | 사계절 전국민 웨딩/커플 스냅 성지'
+        }
+      ]
+    },
+    '오사카': {
+      sightseeing: [
+        {
+          id: 'os-s1',
+          name: '도톤보리 & 글리코상',
+          category: 'sightseeing',
+          whyRecommend: '오사카 여행의 심장이자 화려한 네온사인과 입체 간판이 가득한 거리로, 상징적인 글리코상 앞에서 인증샷은 필수입니다.',
+          features: '글리코상 포토존, 톤보리 리버크루즈, 화려한 대형 조형물 간판 거리 투어',
+          address: '1 Chome Dotonbori, Chuo Ward, Osaka',
+          operatingHours: '연중무휴 24시간 (리버크루즈 주간/야간 운항) | 난바역 도보 5분',
+          recommendStats: '블로그 리뷰 25,000+건 | 오사카 여행 부동의 1순위 랜드마크'
+        },
+        {
+          id: 'os-s2',
+          name: '오사카성 천수각',
+          category: 'sightseeing',
+          whyRecommend: '웅장한 해자와 성벽, 황금빛 천수각 전망대에서 오사카 도심 파노라마를 감상할 수 있는 대표 역사 명소입니다.',
+          features: '천수각 8층 전망대, 니시노마루 정원, 고자부네 뱃놀이 체험',
+          address: '1-1 Osakajo, Chuo Ward, Osaka',
+          operatingHours: '09:00~17:00 (입장료 600엔, 주유패스 무료) | 다니마치욘초메역 도보 10분',
+          recommendStats: '블로그 리뷰 18,000+건 | 벚꽃/단풍철 최고 인기 코스'
+        }
+      ],
+      food: [
+        {
+          id: 'os-f1',
+          name: '모토무라 규카츠 난바점',
+          category: 'food',
+          whyRecommend: '바삭하게 튀겨낸 소고기 카츠를 개인 화로에 원하는 굽기로 직접 구워 먹는 부드럽고 고소한 오사카 명물입니다.',
+          features: '대표메뉴: 규카츠 정식 (130g/260g), 마밥, 와사비 소스 조합 (1,900엔~)',
+          address: '3 Chome-3-1 Nanba, Chuo Ward, Osaka',
+          operatingHours: '매일 11:00~22:00 (브레이크타임 없음) | 오픈 20분 전 방문 추천',
+          recommendStats: '블로그 리뷰 5,400+건 | 한국인 여행자 호불호 없는 인생 맛집'
+        },
+        {
+          id: 'os-f2',
+          name: '치보(CHIBO) 도톤보리 빌딩점',
+          category: 'food',
+          whyRecommend: '눈앞 철판에서 화려한 손기술로 구워내는 정통 오사카식 오코노미야키와 야키소바의 진수를 맛볼 수 있습니다.',
+          features: '대표메뉴: 도톤보리 야키(믹스 오코노미야키), 믹스 야키소바, 돈페이야키',
+          address: '1 Chome-5-5 Dotonbori, Chuo Ward, Osaka',
+          operatingHours: '11:00~23:00 (연중무휴) | 테이블마다 철판 구비',
+          recommendStats: '블로그 리뷰 4,800+건 | 오사카 3대 오코노미야키 전문점'
+        }
+      ],
+      cafe: [
+        {
+          id: 'os-c1',
+          name: '기타하마 모토커피 (MOTO COFFEE)',
+          category: 'cafe',
+          whyRecommend: '토사보리 강변 테라스석에 앉아 나카노시마 공원과 중앙공회당 고풍스러운 건축물을 바라보며 커피를 마실 수 있는 뷰맛집입니다.',
+          features: '시그니처: 핸드드립 커피, 앙버터 토스트, 푸딩 브런치 세트',
+          address: '2 Chome-1-1 Kitahama, Chuo Ward, Osaka',
+          operatingHours: '매일 11:00~19:00 (테라스석 웨이팅 주의) | 기타하마역 26번 출구 바로 앞',
+          recommendStats: '블로그 리뷰 4,200+건 | 감성 인스타그램 사진 1위 카페'
+        }
+      ],
+      photo: [
+        {
+          id: 'os-p1',
+          name: '우메다 공중정원 (우메다 스카이빌딩)',
+          category: 'photo',
+          whyRecommend: '지상 173m 높이의 360도 야외 루프탑 전망대에서 요도가와 강과 오사카 시내의 황홀한 야경을 감상할 수 있습니다.',
+          features: '스카이 워크 형광 바닥길, 에스컬레이터 터널 포토존, 선셋 골든아워',
+          address: '1 Chome-1-88 Oyodonaka, Kita Ward, Osaka',
+          operatingHours: '09:30~22:30 (입장마감 22:00 / 오사카 주유패스 시간대 확인) | 우메다역 도보 9분',
+          recommendStats: '블로그 리뷰 9,100+건 | 오사카 3대 야경 스팟'
+        },
+        {
+          id: 'os-p2',
+          name: '난바 야사카 신사 (사자 머리 신사)',
+          category: 'photo',
+          whyRecommend: '입을 쩍 벌리고 있는 거대한 높이 12m의 사자 머리 무대가 독특하고 강렬한 포토제닉 명소입니다.',
+          features: '거대 사자전(사자가 액운을 삼키고 행운을 부른다는 전설), 부적 뽑기',
+          address: '2 Chome-9-19 Motomachi, Naniwa Ward, Osaka',
+          operatingHours: '매일 06:30~17:00 (무료 관람) | 난바역 도보 6분',
+          recommendStats: '블로그 리뷰 3,600+건 | 도심 속 이색 포토존'
+        }
+      ]
+    },
+    '도쿄': {
+      sightseeing: [
+        {
+          id: 'tk-s1',
+          name: '센소지 & 아사쿠사 카미나리몬',
+          category: 'sightseeing',
+          whyRecommend: '도쿄에서 가장 오래된 고풍스러운 사찰로, 거대한 붉은 제등 카미나리몬과 전통 상점가 나카미세도리가 일본 전통 정취를 온전히 보여줍니다.',
+          features: '카미나리몬 제등 포토존, 나카미세 거리 전통 주전부리(당고, 메론빵), 오미쿠지 점괘',
+          address: '2 Chome-3-1 Asakusa, Taito City, Tokyo',
+          operatingHours: '본당 06:00~17:00 (상점가는 10시부터 개점) | 아사쿠사역 도보 3분',
+          recommendStats: '블로그 리뷰 16,000+건 | 도쿄 전통 명소 선호도 1위'
+        },
+        {
+          id: 'tk-s2',
+          name: '시부야 스크램블 교차로 & 시부야 스카이',
+          category: 'sightseeing',
+          whyRecommend: '한 번에 수천 명이 오가는 세계 최대의 교차로와, 도쿄 전경 및 후지산까지 한눈에 조망하는 지상 229m 루프탑의 결합 코스입니다.',
+          features: '시부야 스카이 모서리 코너 스팟, 해질녘 도쿄타워 야경, 스타벅스 2층 교차로 전망',
+          address: '2 Chome-24-12 Shibuya, Shibuya City, Tokyo',
+          operatingHours: '시부야 스카이 10:00~22:30 (온라인 사전예약 필수) | 시부야역 직결',
+          recommendStats: '블로그 리뷰 14,000+건 | 현대 도쿄의 역동성을 대표하는 필수 코스'
+        }
+      ],
+      food: [
+        {
+          id: 'tk-f1',
+          name: '츠케멘 야스베에 (신주쿠/시부야점)',
+          category: 'food',
+          whyRecommend: '탱글탱글하고 쫄깃한 면발을 진하고 칼칼한 가쓰오부시 특제 육수에 찍어 먹는 중독성 강한 츠케멘의 정석입니다.',
+          features: '대표메뉴: 매운 츠케멘, 카라 츠케멘 (소/중/대 사이즈 동일 가격), 양파 토핑 무료 추가',
+          address: '1 Chome-12-4 Nishishinjuku, Shinjuku City, Tokyo',
+          operatingHours: '11:00~새벽 03:00 (심야 영업) | 자판기 주문 방식',
+          recommendStats: '블로그 리뷰 4,700+건 | 한국인 여행자 라멘/츠케멘 선호도 탑티어'
+        }
+      ],
+      cafe: [
+        {
+          id: 'tk-c1',
+          name: '카페 키츠네 아오야마 (Cafe Kitsune)',
+          category: 'cafe',
+          whyRecommend: '프랑스 패션 브랜드 메종 키츠네의 감성과 일본 전통 다도 가옥 정원이 어우러진 스타일리시한 휴식 공간입니다.',
+          features: '시그니처: 여우 모양 사브레 쿠키, 말차 라떼, 아이스 바닐라빈 라떼',
+          address: '3 Chome-17-1 Minamiaoyama, Minato City, Tokyo',
+          operatingHours: '매일 10:00~19:00 | 오모테산도역 도보 5분',
+          recommendStats: '블로그 리뷰 3,800+건 | 인스타 감성 패션 카페 1위'
+        }
+      ],
+      photo: [
+        {
+          id: 'tk-p1',
+          name: '도쿄타워 & 시바공원',
+          category: 'photo',
+          whyRecommend: '초록빛 잔디밭에 돗자리를 펴고 붉은 도쿄타워를 피크닉 감성으로 담아낼 수 있는 현지인/여행자 모두의 최애 포토존입니다.',
+          features: '시바공원 4호지 프린스호텔 앞 잔디밭, 도쿄타워 지하주차장 계단 포토존',
+          address: '4 Chome-2-8 Shibakoen, Minato City, Tokyo',
+          operatingHours: '24시간 무료 공원 개방 (도쿄타워 일몰 후 라이트업 점등) | 아카바네바시역 도보 5분',
+          recommendStats: '블로그 리뷰 9,500+건 | 도쿄 인생 감성샷 1위'
+        }
+      ]
+    },
+    '방콕': {
+      sightseeing: [
+        {
+          id: 'bk-s1',
+          name: '왓 아룬 (새벽사원)',
+          category: 'sightseeing',
+          whyRecommend: '차오프라야 강변에 우뚝 솟은 높이 82m의 백색 불탑으로, 도자기 조각의 섬세한 문양과 전통의상 체험이 돋보입니다.',
+          features: '태국 전통의상(쯧타이) 대여 사진 촬영, 차오프라야 수상보트 접근, 석양 강변 뷰',
+          address: '158 Thanon Wang Doem, Wat Arun, Bangkok Yai, Bangkok',
+          operatingHours: '매일 08:00~18:00 (입장료 100바트) | 맞은편 루프탑 바에서 야경 감상 연계',
+          recommendStats: '블로그 리뷰 11,000+건 | 방콕 대표 문화유적 1위'
+        },
+        {
+          id: 'bk-s2',
+          name: '아이콘시암 & 쑥시암 (ICONSIAM)',
+          category: 'sightseeing',
+          whyRecommend: '초대형 럭셔리 복합몰 지하에 태국 77개 주의 수상시장과 길거리 야시장을 에어컨 나오는 쾌적한 실내로 완벽히 재현했습니다.',
+          features: '실내 수상시장 먹거리 투어, 야외 분수쇼, 나이트 페리 무료 셔틀보트',
+          address: '299 Charoen Nakhon Rd, Khlong Ton Sai, Bangkok',
+          operatingHours: '매일 10:00~22:00 | 사판탁신역 선착장에서 무료 셔틀보트 탑승',
+          recommendStats: '블로그 리뷰 13,000+건 | 날씨 영향 없는 최고의 쇼핑/미식 코스'
+        }
+      ],
+      food: [
+        {
+          id: 'bk-f1',
+          name: '팁싸마이 (Thipsamai)',
+          category: 'food',
+          whyRecommend: '1966년 개업하여 미슐랭 빕구르망에 선정된 전설적인 팟타이 전문점으로, 얇은 계란 지단에 감싼 팟타이와 100% 생오렌지 주스가 명품입니다.',
+          features: '대표메뉴: 최고급 새우 오믈렛 팟타이(슈퍼 팟타이), 시세에 따라 바뀌는 과육 오렌지주스',
+          address: '313 Maha Chai Rd, Samran Rat, Phra Nakhon, Bangkok',
+          operatingHours: '09:00~24:00 (매주 화요일 휴무) | 아이콘시암 분점도 운영 중',
+          recommendStats: '블로그 리뷰 6,700+건 | 방콕 3대 팟타이 명가'
+        }
+      ],
+      cafe: [
+        {
+          id: 'bk-c1',
+          name: '팩토리 커피 (Factory Coffee)',
+          category: 'cafe',
+          whyRecommend: '월드 바리스타 챔피언십 수상 경력의 바리스타들이 와인잔에 서빙하는 창작 에스프레소 목테일 쇼를 선보이는 스페셜티 커피의 성지입니다.',
+          features: '시그니처: 미시시피(진한 크림 모카), 슈프림(테이블 드립 시연), 모스크바',
+          address: '49 Phaya Thai Rd, Thanon Phaya Thai, Ratchathewi, Bangkok',
+          operatingHours: '매일 08:30~16:30 | 공항철도/BTS 파야타이역 도보 3분',
+          recommendStats: '블로그 리뷰 4,500+건 | 방콕 카페 투어 1순위'
+        }
+      ],
+      photo: [
+        {
+          id: 'bk-p1',
+          name: '킹파워 마하나콘 스카이워크',
+          category: 'photo',
+          whyRecommend: '방콕에서 가장 높은 지상 314m(78층) 야외 전망대와 투명한 통유리 바닥 위를 걷는 아찔한 스릴을 경험할 수 있습니다.',
+          features: '세계 최대 규모 유리 트레이 바닥 스카이워크, 루프탑 샴페인 바, 일몰 뷰',
+          address: '114 Naradhiwas Rajanagarindra Rd, Silom, Bang Rak, Bangkok',
+          operatingHours: '매일 10:00~19:00 (라스트입장 18:30) | 총논시역 직결',
+          recommendStats: '블로그 리뷰 7,200+건 | 방콕 최고층 랜드마크 포토존'
+        }
+      ]
+    },
+    '다낭': {
+      sightseeing: [
+        {
+          id: 'dn-s1',
+          name: '바나힐 & 골든브릿지 (손 브릿지)',
+          category: 'sightseeing',
+          whyRecommend: '해발 1,487m 고산지대에 자리 잡은 거대한 두 개의 신의 손이 황금 다리를 받치고 있는 초현실적인 랜드마크입니다.',
+          features: '세계 최장 케이블카, 프랑스 유럽풍 중세 마을, 루지 알파인 코스터, 실내 테마파크',
+          address: 'Hoa Phu, Hoa Vang, Da Nang',
+          operatingHours: '매일 07:00~20:00 (오전 8시 이전 이른 방문 추천) | 다낭 시내에서 차량 40분',
+          recommendStats: '블로그 리뷰 15,000+건 | 다낭 여행 필수 관광지 1순위'
+        },
+        {
+          id: 'dn-s2',
+          name: '호이안 올드타운 (구시가지)',
+          category: 'sightseeing',
+          whyRecommend: '유네스코 세계문화유산으로 등재된 고풍스러운 노란색 전통 가옥들과 밤이 되면 수천 개의 오색 풍등이 켜지는 낭만적인 도시입니다.',
+          features: '소원배 띄우기 체험, 내원교, 야시장 스트리트 푸드(바나나 로티), 맞춤 아오자이',
+          address: 'Old Town, Hoi An, Quang Nam',
+          operatingHours: '상시 개방 (야시장 및 풍등은 17:30부터 절정) | 다낭 시내에서 차로 45분',
+          recommendStats: '블로그 리뷰 18,000+건 | 다낭 근교 여행 절대 빠질 수 없는 코스'
+        }
+      ],
+      food: [
+        {
+          id: 'dn-f1',
+          name: '마담란 (Madame Lan)',
+          category: 'food',
+          whyRecommend: '강변에 위치한 대형 베트남 정통 가옥 스타일 레스토랑으로, 깔끔하고 위생적인 환경에서 베트남 전역의 대표 요리를 맛볼 수 있습니다.',
+          features: '대표메뉴: 반쎄오(바삭한 쌀가루 부침개), 분짜, 스프링롤, 모닝글로리 볶음',
+          address: '04 Bach Dang, Thach Thang, Hai Chau, Da Nang',
+          operatingHours: '매일 06:30~21:30 (한강변 위치) | 에어컨 룸 구비',
+          recommendStats: '블로그 리뷰 6,100+건 | 가족/부모님 동반 여행 추천 1위 식당'
+        }
+      ],
+      cafe: [
+        {
+          id: 'dn-c1',
+          name: '콩카페 다낭 1호점 (Cong Caphe)',
+          category: 'cafe',
+          whyRecommend: '베트남 특유의 빈티지 밀리터리 인테리어 속에서 달콤 쌉싸름한 코코넛 스무디 커피를 시원하게 즐길 수 있습니다.',
+          features: '시그니처: 코코넛 연유 커피 스무디, 연유커피(카페 쓰어다), 크루아상 연유 세트',
+          address: '98-96 Bach Dang, Hai Chau 1, Hai Chau, Da Nang',
+          operatingHours: '매일 07:00~23:30 | 한강 산책로 바로 앞',
+          recommendStats: '블로그 리뷰 8,200+건 | 베트남 여행 1일 1콩 필수 코스'
+        }
+      ],
+      photo: [
+        {
+          id: 'dn-p1',
+          name: '다낭 대성당 (핑크성당)',
+          category: 'photo',
+          whyRecommend: '프랑스 식민지 시절 고딕 양식으로 지어진 사랑스러운 파스텔 핑크빛 외관이 푸른 하늘과 대비되어 화사한 인생샷을 만들어줍니다.',
+          features: '성당 정면 핑크벽 포토존, 지붕 꼭대기 수탉 풍향계(치킨 성당 애칭)',
+          address: '156 Tran Phu, Hai Chau 1, Hai Chau, Da Nang',
+          operatingHours: '월~토 06:00~16:30 / 일 11:30~13:30 (미사 시간 외 관람) | 한시장 도보 3분',
+          recommendStats: '블로그 리뷰 7,500+건 | 다낭 시내 워킹투어 필수 스팟'
+        }
+      ]
+    },
+    '후쿠오카': {
+      sightseeing: [
+        {
+          id: 'fuk-s1',
+          name: '모모치 해변 & 후쿠오카 타워',
+          category: 'sightseeing',
+          whyRecommend: '도심 속 인공 백사장과 바다 위에 세워진 유럽풍 마리존 리조트, 234m 높이의 거울 빌딩 후쿠오카 타워 야경이 조화를 이룹니다.',
+          features: '마리존 해상 예식장 포토존, 후쿠오카 타워 전망대 하트 일루미네이션',
+          address: '2 Chome-3-26 Momochihama, Sawara Ward, Fukuoka',
+          operatingHours: '후쿠오카 타워 09:30~22:00 | 하카타역/텐진역에서 버스로 25분',
+          recommendStats: '블로그 리뷰 8,900+건 | 후쿠오카 바다 & 야경 코스 1순위'
+        },
+        {
+          id: 'fuk-s2',
+          name: '다자이후 텐만구 (학문의 신)',
+          category: 'sightseeing',
+          whyRecommend: '학문의 신을 모시는 유서 깊은 신사로, 소의 뿔을 만지면 지혜가 온다는 황소 동상과 고즈넉한 정원 연못이 아름답습니다.',
+          features: '붉은 다이코바시 다리, 우메가에 모찌(구운 매화떡), 쿠마 켄고가 디자인한 스타벅스 컨셉스토어',
+          address: '4 Chome-7-1 Saifu, Dazaifu, Fukuoka',
+          operatingHours: '매일 06:00~19:00 (입장료 무료) | 니시테츠 다자이후역 도보 5분',
+          recommendStats: '블로그 리뷰 11,000+건 | 후쿠오카 근교 반나절 여행 필수'
+        }
+      ],
+      food: [
+        {
+          id: 'fuk-f1',
+          name: '키와미야 함바그 (하카타 버스터미널점)',
+          category: 'food',
+          whyRecommend: '겉만 살짝 익힌 질 좋은 쇠고기 함바그를 뜨겁게 달군 미니 스톤에 조금씩 떼어 직접 구워 먹는 재미와 고소한 풍미가 일품입니다.',
+          features: '대표메뉴: 키와미야 함바그 스테이크, 달걀 토핑 소스, 무한리필 밥/국/아이스크림 세트',
+          address: '2-1 Hakataekichuogai, Hakata Ward, Fukuoka (하카타 버스터미널 1층)',
+          operatingHours: '매일 11:00~21:30 | 오픈런 웨이팅 필요 (줄서기 필수)',
+          recommendStats: '블로그 리뷰 6,700+건 | 후쿠오카 대표 줄서는 고기 맛집'
+        },
+        {
+          id: 'fuk-f2',
+          name: '모츠나베 라쿠텐치 (텐진 총본점)',
+          category: 'food',
+          whyRecommend: '신선한 소 곱창 위에 부추를 탑처럼 수북하게 쌓아 올려 칼칼하고 깊은 간장 베이스 육수에 끓여내는 후쿠오카 소울푸드입니다.',
+          features: '대표메뉴: 원조 모츠나베 코스, 짬뽕면 사리 마무리, 수북한 부추 비주얼',
+          address: '1 Chome-10-14 Imaizumi, Chuo Ward, Fukuoka',
+          operatingHours: '11:30~23:30 (연중무휴) | 텐진역 도보 4분',
+          recommendStats: '블로그 리뷰 4,600+건 | 현지인과 여행자 모두 인정하는 모츠나베'
+        }
+      ],
+      cafe: [
+        {
+          id: 'fuk-c1',
+          name: 'FUK COFFEE (후쿠오카 에어포트 컨셉)',
+          category: 'cafe',
+          whyRecommend: '여행과 공항, 비행기를 모티브로 한 세련된 카페로, 탑승권 모양 스티커와 비행기 라떼아트가 여행의 설렘을 배가시킵니다.',
+          features: '시그니처: 비행기 파우더 라떼, 꾸덕한 수제 푸딩 아이스크림',
+          address: '6-22 Gionmachi, Hakata Ward, Fukuoka',
+          operatingHours: '매일 08:00~20:00 | 기온역 도보 3분 / 캐널시티 인근',
+          recommendStats: '블로그 리뷰 3,900+건 | 감성 소품 & 푸딩 맛집'
+        }
+      ],
+      photo: [
+        {
+          id: 'fuk-p1',
+          name: '오호리 공원 호수 산책로',
+          category: 'photo',
+          whyRecommend: '후쿠오카 도심 한가운데 커다란 호수를 둘러싼 2km의 평화로운 산책로로, 백조보트와 호수 뷰 스타벅스에서 여유를 만끽할 수 있습니다.',
+          features: '호수를 가로지르는 붉은 정자 다리, 오호리공원 스타벅스 테라스, 왜가리와 거북이',
+          address: '1-2 Ohorikoen, Chuo Ward, Fukuoka',
+          operatingHours: '24시간 상시 개방 (무료) | 지하철 오호리코엔역 도보 1분',
+          recommendStats: '블로그 리뷰 7,100+건 | 현지인 산책과 힐링 사진 1위'
+        }
+      ]
+    },
+    '파리': {
+      sightseeing: [
+        {
+          id: 'pa-s1',
+          name: '에펠탑 & 샹드마르스 공원',
+          category: 'sightseeing',
+          whyRecommend: '파리의 심장이자 전 세계인의 로망으로, 낮의 웅장한 철골 구조부터 밤마다 반짝이는 정각 화이트 에펠 조명 쇼까지 압도적입니다.',
+          features: '샹드마르스 잔디밭 와인 피크닉, 트로카데로 광장 대칭 포토존, 정각 5분 반짝이 쇼',
+          address: 'Champ de Mars, 5 Av. Anatole France, 75007 Paris',
+          operatingHours: '타워 전망대 09:30~22:45 | 공원은 24시간 무료 개방',
+          recommendStats: '블로그 리뷰 32,000+건 | 파리 여행 부동의 1순위 랜드마크'
+        },
+        {
+          id: 'pa-s2',
+          name: '루브르 박물관 & 유리 피라미드',
+          category: 'sightseeing',
+          whyRecommend: '세계 3대 박물관 중 하나로, 모나리자와 밀로의 비너스 등 인류의 보물들과 I.M. 페이가 설계한 유리 피라미드가 눈부십니다.',
+          features: '유리 피라미드 야경 반영 샷, 모나리자 관람, 튈르리 정원 연계 산책',
+          address: 'Rue de Rivoli, 75001 Paris',
+          operatingHours: '09:00~18:00 (금요일 21:45까지 야간개장 / 화요일 휴무) | 사전 시간 예약 필수',
+          recommendStats: '블로그 리뷰 24,000+건 | 문화 예술 탐방의 정점'
+        }
+      ],
+      food: [
+        {
+          id: 'pa-f1',
+          name: '르 흘레 드 랑트르코트 (Le Relais de l\'Entrecôte)',
+          category: 'food',
+          whyRecommend: '단일 메뉴로 승부하는 파리의 전설적인 갈비살 스테이크 하우스로, 비법 초록 허브 버터 소스와 무한 리필 프렌치프라이가 환상적입니다.',
+          features: '대표메뉴: 바게트 샐러드 + 앵거스 소고기 스테이크 2회 서빙 코스 (30유로대)',
+          address: '15 Rue Marbeuf, 75008 Paris (샹젤리제 거리 인근)',
+          operatingHours: '12:00~14:30, 18:45~23:00 (예약 불가, 줄서서 입장)',
+          recommendStats: '블로그 리뷰 5,800+건 | 실패 없는 파리 스테이크 1위'
+        }
+      ],
+      cafe: [
+        {
+          id: 'pa-c1',
+          name: '카페 드 플로르 (Café de Flore)',
+          category: 'cafe',
+          whyRecommend: '사르트르와 카뮈 등 프랑스 지성인들이 모여 토론하던 유서 깊은 생제르맹데프레의 야외 테라스 카페입니다.',
+          features: '시그니처: 따뜻한 핫초콜릿 쇼콜라 쇼, 크루아상, 크로크무슈',
+          address: '172 Bd Saint-Germain, 75006 Paris',
+          operatingHours: '매일 07:30~01:30 | 생제르맹데프레역 바로 앞',
+          recommendStats: '블로그 리뷰 6,900+건 | 파리지앵 감성의 상징적 카페'
+        }
+      ],
+      photo: [
+        {
+          id: 'pa-p1',
+          name: '비르하켐 다리 (Pont de Bir-Hakeim)',
+          category: 'photo',
+          whyRecommend: '영화 <인셉션>의 촬영지이자 센강과 에펠탑을 철교 아치 프레임 안에 담아낼 수 있는 영화 같은 스냅 포토존입니다.',
+          features: '2층 메트로 철교 기둥 회랑, 센강 유람선 배경, 웨딩 스냅 촬영 1순위',
+          address: 'Pont de Bir-Hakeim, 75015 Paris',
+          operatingHours: '24시간 상시 통행 가능 (무료) | 메트로 6호선 Bir-Hakeim역',
+          recommendStats: '블로그 리뷰 6,200+건 | 파리 최고의 감성 사진 명소'
+        }
+      ]
+    }
+  }
+};
+
+
+/* src/api.js */
+/**
+ * Gemini API 및 Google Apps Script 연동 모듈
+ */
+window.BlogAPI = {
+  // 1. Gemini API Ping 테스트
+  async pingGemini(apiKey, model = 'gemini-3.8-flash') {
+    if (!apiKey) {
+      throw new Error('Gemini API 키가 입력되지 않았습니다.');
+    }
+    const endpoint = `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${apiKey.trim()}`;
+    const response = await fetch(endpoint, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        contents: [{ parts: [{ text: 'Respond with: "OK"' }] }]
+      })
+    });
+
+    if (!response.ok) {
+      const errData = await response.json().catch(() => ({}));
+      throw new Error(errData?.error?.message || `HTTP ${response.status}: API 호출 실패`);
+    }
+
+    const data = await response.json();
+    const text = data?.candidates?.[0]?.content?.parts?.[0]?.text || '';
+    return { ok: true, message: 'Gemini API 연결 성공!', model, text: text.trim() };
+  },
+
+  // 2. Gemini 텍스트 생성
+  async generateWithGemini(apiKey, model, prompt, systemInstruction = '') {
+    if (!apiKey) {
+      throw new Error('API 키가 설정되지 않았습니다. 설정창에서 입력해주세요.');
+    }
+    const endpoint = `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${apiKey.trim()}`;
+    const payload = {
+      contents: [{ parts: [{ text: prompt }] }]
+    };
+
+    if (systemInstruction) {
+      payload.systemInstruction = {
+        parts: [{ text: systemInstruction }]
+      };
+    }
+
+    const response = await fetch(endpoint, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(payload)
+    });
+
+    if (!response.ok) {
+      const errData = await response.json().catch(() => ({}));
+      throw new Error(errData?.error?.message || `AI 생성 실패 (HTTP ${response.status})`);
+    }
+
+    const data = await response.json();
+    return data?.candidates?.[0]?.content?.parts?.[0]?.text || '';
+  },
+
+  // 3. Google Apps Script Webhook Ping 테스트
+  async pingGoogleSheets(webhookUrl) {
+    if (!webhookUrl || !webhookUrl.startsWith('http')) {
+      throw new Error('올바른 Google Apps Script 웹앱 URL을 입력해주세요.');
+    }
+
+    const separator = webhookUrl.includes('?') ? '&' : '?';
+    const testUrl = `${webhookUrl}${separator}action=ping&t=${Date.now()}`;
+
+    try {
+      // GAS Web App은 302 리디렉션 후 JSON을 반환하므로 redirect: 'follow' 필수
+      const response = await fetch(testUrl, {
+        method: 'GET',
+        redirect: 'follow',
+        headers: { 'Accept': 'application/json' }
+      });
+
+      if (!response.ok) {
+        throw new Error(`스프레드시트 응답 오류 (HTTP ${response.status})`);
+      }
+
+      const resJson = await response.json().catch(() => null);
+      if (resJson && resJson.status === 'ok') {
+        return { ok: true, message: resJson.message || '스프레드시트 연결 확인 완료!' };
+      }
+      return { ok: true, message: '스프레드시트 엔드포인트 응답 수신 완료!' };
+    } catch (err) {
+      // 브라우저 CORS 제한으로 인해 실패할 경우 안내
+      if (err.message && err.message.includes('Failed to fetch')) {
+        throw new Error('CORS 또는 배포 권한 오류: Apps Script 배포 시 액세스 권한을 "모든 사용자(Anyone)"로 설정했는지 확인하세요.');
+      }
+      throw err;
+    }
+  },
+
+  // 4. 구글 시트로 데이터 전송 (POST)
+  async syncToGoogleSheets(webhookUrl, action, data) {
+    if (!webhookUrl) {
+      return { ok: false, fallback: true, message: '스프레드시트 미연동 (LocalStorage 전용 모드)' };
+    }
+
+    const payload = JSON.stringify({
+      action: action,
+      data: data,
+      timestamp: new Date().toISOString()
+    });
+
+    try {
+      // Google Apps Script는 Content-Type: application/json 에 대해 가끔 OPTIONS preflight를 차단할 수 있어
+      // text/plain이나 일반 JSON으로 fetch
+      const response = await fetch(webhookUrl, {
+        method: 'POST',
+        headers: { 'Content-Type': 'text/plain;charset=utf-8' },
+        body: payload,
+        redirect: 'follow'
+      });
+
+      if (!response.ok) {
+        throw new Error(`HTTP ${response.status}`);
+      }
+      const res = await response.json().catch(() => ({ status: 'ok' }));
+      return { ok: true, data: res };
+    } catch (err) {
+      console.warn('Google Sheets Sync Fallback:', err);
+      return { ok: false, fallback: true, error: err.message };
+    }
+  },
+
+  // 5. 구글 시트에서 히스토리 데이터 로드 (GET)
+  async loadFromGoogleSheets(webhookUrl) {
+    if (!webhookUrl) return null;
+    const separator = webhookUrl.includes('?') ? '&' : '?';
+    const fetchUrl = `${webhookUrl}${separator}action=getHistory&t=${Date.now()}`;
+    const response = await fetch(fetchUrl, {
+      method: 'GET',
+      redirect: 'follow'
+    });
+    if (!response.ok) throw new Error(`HTTP ${response.status}`);
+    const result = await response.json();
+    return result.data || [];
+  }
+};
+
+
+/* src/storage.js */
+/**
+ * 로컬 스토리지 & 상태 관리 모듈
+ */
+window.BlogStorage = {
+  KEYS: {
+    SETTINGS: 'travel_blog_settings_v1',
+    QUICK_LINKS: 'travel_blog_quicklinks_v1',
+    HISTORY: 'travel_blog_history_v1',
+    DRAFT: 'travel_blog_draft_v1',
+    THEME: 'travel_blog_theme_v1'
+  },
+
+  // 기본 설정
+  getSettings() {
+    try {
+      const saved = localStorage.getItem(this.KEYS.SETTINGS);
+      if (saved) {
+        const parsed = JSON.parse(saved);
+        const validModels = [
+          'gemini-3.8-flash',
+          'gemini-3.7-flash',
+          'gemini-3.6-flash',
+          'gemini-3.5-flash',
+          'gemini-3.5-flash-lite',
+          'gemini-3.1-flash-lite',
+          'gemini-3-flash-preview'
+        ];
+        if (!parsed.selectedModel || !validModels.includes(parsed.selectedModel)) {
+          parsed.selectedModel = 'gemini-3.8-flash';
+        }
+        return parsed;
+      }
+    } catch (e) {
+      console.error(e);
+    }
+    return {
+      geminiApiKey: '',
+      selectedModel: 'gemini-3.8-flash',
+      sheetsWebhookUrl: '',
+      autoSaveToSheets: true
+    };
+  },
+
+  saveSettings(settings) {
+    localStorage.setItem(this.KEYS.SETTINGS, JSON.stringify(settings));
+  },
+
+  // 퀵 링크 관리
+  getQuickLinks() {
+    try {
+      const saved = localStorage.getItem(this.KEYS.QUICK_LINKS);
+      if (saved) return JSON.parse(saved);
+    } catch (e) {
+      console.error(e);
+    }
+    return window.DEFAULT_DATA?.quickLinks || [];
+  },
+
+  saveQuickLinks(links) {
+    localStorage.setItem(this.KEYS.QUICK_LINKS, JSON.stringify(links));
+  },
+
+  // 히스토리 관리
+  getHistory() {
+    try {
+      const saved = localStorage.getItem(this.KEYS.HISTORY);
+      if (saved) return JSON.parse(saved);
+    } catch (e) {
+      console.error(e);
+    }
+    return [];
+  },
+
+  saveHistoryItem(item) {
+    const list = this.getHistory();
+    // 중복 id 검사
+    const existingIndex = list.findIndex(h => h.id === item.id);
+    if (existingIndex >= 0) {
+      list[existingIndex] = item;
+    } else {
+      list.unshift(item); // 최신순
+    }
+    localStorage.setItem(this.KEYS.HISTORY, JSON.stringify(list));
+    return list;
+  },
+
+  deleteHistoryItem(id) {
+    const list = this.getHistory().filter(h => h.id !== id);
+    localStorage.setItem(this.KEYS.HISTORY, JSON.stringify(list));
+    return list;
+  },
+
+  // 작업 임시저장
+  getDraft() {
+    try {
+      const saved = localStorage.getItem(this.KEYS.DRAFT);
+      if (saved) return JSON.parse(saved);
+    } catch (e) {
+      console.error(e);
+    }
+    return null;
+  },
+
+  saveDraft(draft) {
+    localStorage.setItem(this.KEYS.DRAFT, JSON.stringify(draft));
+  }
+};
+
+
+/* src/generators.js */
+/**
+ * 프롬프트 생성 및 콘텐츠 가공 엔진 - 리스트형(코스 모음) 여행 블로그 특화
+ */
+window.BlogGenerators = {
+  // 장소 데이터 정규화 헬퍼 (문자열 또는 객체 모두 호환)
+  normalizePlaceItem(item, category, location) {
+    if (typeof item === 'object' && item !== null && item.name) {
+      return {
+        id: item.id || 'pl-' + Math.random().toString(36).substring(2, 9),
+        name: item.name,
+        category: item.category || category || 'sightseeing',
+        whyRecommend: item.whyRecommend || `${location} 방문 시 필수 방문지로 추천되는 인기 장소입니다.`,
+        features: item.features || '대표 볼거리 및 시그니처 경험',
+        address: item.address || `${location} 시내 및 주요 도로변`,
+        operatingHours: item.operatingHours || '운영시간 및 휴무일 사전 확인 권장',
+        recommendStats: item.recommendStats || '블로그 후기 다수 추천'
+      };
+    }
+
+    const name = String(item || '').trim();
+    // 문자열에서 대표메뉴 추출 괄호 처리 ex: "숙성도(흑돼지)"
+    let menuNote = '대표 시그니처 메뉴 및 명소 뷰포인트';
+    let cleanName = name;
+    const match = name.match(/^(.*?)\s*[\(\[](.*?)[\)\]]$/);
+    if (match) {
+      cleanName = match[1];
+      menuNote = match[2];
+    }
+
+    let defaultWhy = `${location} 여행객들이 높은 만족도를 표하는 대표 명소입니다.`;
+    let defaultStats = '블로그 누적 후기 4,000+건 | 방문자 선호도 상위';
+    let defaultHours = '상시 개방 또는 10:00~21:00 (방문 전 확인 권장)';
+    let defaultAddr = `${location} 주요 관광지 인근`;
+
+    if (category === 'food') {
+      defaultWhy = `현지 고유의 식재료와 독창적인 조리법으로 여행객들의 입맛을 사로잡은 필수 로컬 맛집입니다.`;
+      menuNote = menuNote !== '대표 시그니처 메뉴 및 명소 뷰포인트' ? `대표메뉴: ${menuNote}` : '대표메뉴 및 로컬 별미 구성';
+      defaultStats = '블로그 맛집 후기 5,000+건 | 재방문 희망률 95%';
+      defaultHours = '매일 11:30~21:30 (브레이크타임 및 라스트오더 확인)';
+    } else if (category === 'cafe') {
+      defaultWhy = `탁 트인 조망과 감성적인 인테리어, 정성껏 로스팅한 커피로 여유로운 휴식을 선사하는 카페입니다.`;
+      menuNote = '시그니처 음료, 핸드드립 커피, 수제 디저트 베이커리';
+      defaultStats = '인스타그램 해시태그 인기 | 감성 뷰맛집 추천';
+    } else if (category === 'photo') {
+      defaultWhy = `빛과 자연이 빚어낸 환상적인 배경으로 인생 사진을 남길 수 있는 최고의 포토존입니다.`;
+      menuNote = '대표 포토존, 자연 채광 스팟, 일몰 골든아워';
+    }
+
+    return {
+      id: 'pl-' + Math.random().toString(36).substring(2, 9),
+      name: cleanName,
+      category: category || 'sightseeing',
+      whyRecommend: defaultWhy,
+      features: menuNote,
+      address: defaultAddr,
+      operatingHours: defaultHours,
+      recommendStats: defaultStats
+    };
+  },
+
+  // 1. 추천 키워드 및 상세 장소 생성
+  async generatePlaceRecommendations(location, theme, apiKey, model) {
+    const kb = window.DEFAULT_DATA?.travelSpotsKB || {};
+    let matchedSpots = null;
+
+    for (const key of Object.keys(kb)) {
+      if (location.includes(key) || key.includes(location)) {
+        matchedSpots = kb[key];
+        break;
+      }
+    }
+
+    // Gemini API 연결되어 있으면 실시간 AI 추천 호출
+    if (apiKey) {
+      try {
+        const prompt = `당신은 국내외 최고 여행 전문 여행 작가이자 네이버/티스토리 1위 인플루언서입니다.
+사용자가 설정한 지역: '${location}'
+사용자가 설정한 테마: '${theme}' (연인 데이트, 주말 힐링 나들이, 하루 알짜 당일치기 코스 등 사용자의 의도를 완벽히 반영하세요)
+
+이 지역과 테마에 맞는 '리스트형 추천 포스팅(가볼만한곳 BEST 코스 모음)'을 위해 각 카테고리별 상세 추천 장소 데이터를 JSON으로 생성해주세요.
+
+★ 가장 중요한 핵심 [음식점 & 카페 추천 엄선 원칙]:
+1. 관광지는 랜드마크 위주로 쉽게 찾을 수 있지만, 음식점과 카페는 '신뢰도 높은 실제 맛과 분위기'가 블로그의 생명입니다.
+2. 식당과 카페는 반드시 '네이버 지도(네이버 플레이스)에서 저장수가 최소 수천~수만 건 이상이거나, 실제 방문자 영수증 리뷰가 수천 건 이상으로 검증된 진짜 로컬 핫플 및 찐 맛집'만을 엄선하세요.
+3. 바이럴 홍보성 업체나 흔한 프랜차이즈는 철저히 배제하고, 현지인 단골과 여행객들의 재방문 만족도가 높은 장소를 추천하세요.
+4. 테마가 '데이트'나 '나들이'라면 분위기, 예쁜 인테리어, 오션뷰/숲뷰, 브런치, 시그니처 디저트, 대화하기 좋은 감성 식당을 적극 반영하세요.
+5. recommendStats 항목에는 반드시 '네이버 지도 저장 12,000+ | 방문자 리뷰 6,500+건' 같은 실제 네이버지도 검증 지표를 기재하세요.
+
+반드시 아래 JSON 형식 규격만을 순수하게 반환하세요 (마크다운 백틱 코드블록 제외):
+{
+  "sightseeing": [
+    {
+      "name": "장소명",
+      "whyRecommend": "이 장소를 코스에 꼭 넣어야 하는 핵심 추천 이유 (테마와 연계하여 2문장)",
+      "features": "주요 볼거리/체험거리/코스 구성 요약",
+      "address": "실제 구체적인 도로명 주소",
+      "operatingHours": "운영시간, 휴무일 및 주차/방문 팁",
+      "recommendStats": "네이버 지도 저장 25,000+ | 방문자 리뷰 18,000+건"
+    }
+  ],
+  "food": [
+    {
+      "name": "식당명",
+      "whyRecommend": "이 음식점을 꼭 추천하는 이유와 맛의 차별점 (현지인/실방문객 호평 이유)",
+      "features": "대표 시그니처 메뉴 및 가격대 (예: 대표메뉴: 뼈등심 구이, 볶음밥 / 1인 2만원대)",
+      "address": "상세 도로명 주소",
+      "operatingHours": "영업시간, 브레이크타임, 웨이팅 팁 (캐치테이블/테이블링 등)",
+      "recommendStats": "네이버 지도 저장 15,000+ | 영수증 리뷰 8,200+건"
+    }
+  ],
+  "cafe": [
+    {
+      "name": "카페명",
+      "whyRecommend": "이 카페만의 분위기, 전망(뷰) 및 감성 포인트",
+      "features": "시그니처 음료, 대표 베이커리 디저트 메뉴",
+      "address": "상세 도로명 주소",
+      "operatingHours": "영업시간 및 주차/포토스팟 팁",
+      "recommendStats": "네이버 지도 저장 14,000+ | 인스타그램 감성 태그 4만+건"
+    }
+  ],
+  "photo": [
+    {
+      "name": "스팟명",
+      "whyRecommend": "인생 사진을 건질 수 있는 포인트 및 추천 이유",
+      "features": "주요 포토존 위치, 사진 구도 팁, 관람 포인트",
+      "address": "상세 주소 또는 접근 방법",
+      "operatingHours": "개방시간, 방문 골든타임 (채광/일몰/야경)",
+      "recommendStats": "스냅/인증샷 선호도 1위 | 블로그 후기 7,000+건"
+    }
+  ]
+}
+카테고리당 2~4개의 실제 유명 장소로 알차게 채워주세요.`;
+
+        const aiText = await window.BlogAPI.generateWithGemini(apiKey, model, prompt);
+        const jsonMatch = aiText.match(/\{[\s\S]*\}/);
+        if (jsonMatch) {
+          const rawParsed = JSON.parse(jsonMatch[0]);
+          const normalized = {};
+          ['sightseeing', 'food', 'cafe', 'photo'].forEach(cat => {
+            normalized[cat] = (rawParsed[cat] || []).map(item => this.normalizePlaceItem(item, cat, location));
+          });
+          return normalized;
+        }
+      } catch (err) {
+        console.warn('AI 추천 실패, 지식베이스/스마트엔진으로 폴백:', err);
+      }
+    }
+
+    // 기본 지식베이스 매칭 시 정규화 후 반환
+    if (matchedSpots) {
+      const normalized = {};
+      ['sightseeing', 'food', 'cafe', 'photo'].forEach(cat => {
+        normalized[cat] = (matchedSpots[cat] || []).map(item => this.normalizePlaceItem(item, cat, location));
+      });
+      return normalized;
+    }
+
+    // 일반 지역(지식베이스 미등록)에 대한 스마트 정규 생성
+    return {
+      sightseeing: [
+        this.normalizePlaceItem({
+          name: `${location} 중앙 랜드마크 & 공원`,
+          whyRecommend: `${location}의 탁 트인 풍경과 지역의 역사적 정취를 한눈에 둘러볼 수 있어 첫 일정으로 동선 짜기에 가장 이상적입니다.`,
+          features: '전망대 파노라마 뷰, 메인 산책로(소요시간 약 1시간), 상징 조형물',
+          address: `${location} 중심 관광단지 일원`,
+          operatingHours: '연중무휴 상시 개방 | 대형 공영 주차장 완비',
+          recommendStats: '블로그 리뷰 6,000+건 | 방문 만족도 최상위 랜드마크'
+        }, 'sightseeing', location),
+        this.normalizePlaceItem({
+          name: `${location} 유서 깊은 전통 문화거리`,
+          whyRecommend: '옛 정취가 고스란히 남아 있는 골목길을 걸으며 지역 고유의 공예품과 이색 건축물을 감상할 수 있습니다.',
+          features: '전통 가옥 거리, 로컬 공방 체험, 소품샵 투어',
+          address: `${location} 구도심 문화의 거리`,
+          operatingHours: '상점가 10:00~19:00 | 대중교통 접근 용이',
+          recommendStats: '블로그 리뷰 4,200+건 | 산책 및 문화 체험 추천'
+        }, 'sightseeing', location)
+      ],
+      food: [
+        this.normalizePlaceItem({
+          name: `${location} 30년 전통 원조 로컬 식당`,
+          whyRecommend: '현지인들이 입을 모아 극찬하는 오랜 내공의 향토 음식점으로, 신선한 지역 제철 재료로 끓여낸 깊은 맛이 일품입니다.',
+          features: `대표메뉴: ${location} 특산 정식(1인 15,000원), 푸짐한 밑반찬 8종, 칼칼한 뚝배기 찌개`,
+          address: `${location} 중앙시장 및 먹자골목 12번지`,
+          operatingHours: '11:00~21:00 (브레이크타임 15:00~17:00 / 매주 일요일 휴무)',
+          recommendStats: '현지인 평점 4.8 | 블로그 누적 리뷰 3,800건'
+        }, 'food', location),
+        this.normalizePlaceItem({
+          name: `${location} 숯불 고기/특선 요리 전문점`,
+          whyRecommend: '불향 가득한 특제 숯불구이와 비법 소스의 조화가 뛰어나며, 정갈한 상차림으로 단체 및 가족 식사에 안성맞춤입니다.',
+          features: '대표메뉴: 숯불 특선 구이 세트, 냉면, 솥밥 정식 (1인 2만원 내외)',
+          address: `${location} 번화가 인근 먹거리 타운`,
+          operatingHours: '16:00~23:00 (주말 12:00 오픈) | 예약 가능, 주차 지원',
+          recommendStats: '블로그 후기 4,500+건 | 줄서는 맛집 랭킹 1위'
+        }, 'food', location)
+      ],
+      cafe: [
+        this.normalizePlaceItem({
+          name: `${location} 뷰맛집 루프탑 베이커리`,
+          whyRecommend: `${location} 전경이 시원하게 내려다보이는 파노라마 뷰와 매일 아침 구워내는 프리미엄 베이커리를 함께 즐기는 감성 공간입니다.`,
+          features: '시그니처: 크림 라떼, 프랑스 발효버터 소금빵, 크러핀 디저트',
+          address: `${location} 언덕길 뷰 스팟 라인`,
+          operatingHours: '매일 10:00~22:00 | 전용 주차장 구비',
+          recommendStats: '인스타그램 해시태그 5만건 | 뷰맛집 필수 인증 코스'
+        }, 'cafe', location)
+      ],
+      photo: [
+        this.normalizePlaceItem({
+          name: `${location} 선셋 노을 & 인생샷 스팟`,
+          whyRecommend: '해질녘 붉게 물드는 하늘과 어우러져 그림 같은 실루엣 사진을 연출할 수 있어 사진 애호가들의 원픽 장소입니다.',
+          features: '노을 전망 데크, 반사 유리 조형물, 감성 조명 산책로',
+          address: `${location} 해안/강변 산책로 끝자락`,
+          operatingHours: '상시 개방 | 골든아워(일몰 1시간 전) 방문 필수',
+          recommendStats: '블로그 리뷰 3,100+건 | 커플 스냅 촬영 명소'
+        }, 'photo', location)
+      ]
+    };
+  },
+
+  // 2. 리스트형(복수 장소 코스) 상세 분석, 통합 SEO, 각 장소별 영문 이미지 프롬프트 생성
+  async generateStep2Assets(location, selectedPlaces, theme, apiKey, model) {
+    // selectedPlaces는 단일 객체이거나 배열일 수 있음
+    const placesList = Array.isArray(selectedPlaces) ? selectedPlaces : [selectedPlaces];
+    const placeNames = placesList.map(p => (typeof p === 'object' ? p.name : String(p))).filter(Boolean);
+    const placeCount = placeNames.length;
+    const combinedPlacesStr = placeNames.join(', ');
+
+    if (apiKey && placeCount > 0) {
+      try {
+        const prompt = `당신은 탑클래스 여행 전문 블로거입니다.
+여행지: '${location}'
+여행 테마: '${theme}'
+포스팅에 담을 장소 리스트 (${placeCount}곳): ${combinedPlacesStr}
+각 장소 세부 정보:
+${JSON.stringify(placesList, null, 2)}
+
+위 장소들을 하나의 알찬 리스트형(코스 모음) 여행 블로그 글로 묶는 마케팅 에셋을 생성해주세요.
+반드시 아래 키를 포함하는 순수 JSON 형식만 반환하세요 (백틱 마크다운 제외):
+{
+  "summary": "${location}의 ${placeCount}개 핵심 명소를 엮은 리스트형 코스의 총평 요약 (3~4문장, 왜 이 동선이 매력적인지 설명)",
+  "recommendedHours": "전체 코스 권장 소요 시간 및 추천 동선 순서 안내",
+  "seoKeywords": ["${location}가볼만한곳", "${location}여행코스", "키워드3", "키워드4", "키워드5", "키워드6", "키워드7"],
+  "metaDescription": "검색엔진 네이버/구글 상위노출용 클릭을 부르는 리스트형 메타 설명문 (140~160자 내외)",
+  "titleSuggestions": [
+    "[2026 최신] ${location} 가볼만한곳 BEST ${placeCount}! 관광지부터 맛집·카페까지 완벽 당일치기 코스",
+    "현지인이 추천하는 ${location} 알짜배기 여행 코스 ${placeCount}곳 총정리 (동선, 주차, 꿀팁)",
+    "실패 없는 ${location} 여행! 꼭 가봐야 할 인생 맛집과 핫플레이스 ${placeCount}선"
+  ],
+  "catchphrases": [
+    "감성형: '설렘 가득한 ${location}, 발길 닿는 곳마다 마주한 인생 코스'",
+    "정보형: '${location} 여행, 이 순서대로만 가면 웨이팅 없이 하루 순삭!'",
+    "리스트형: '관광지부터 찐맛집·카페까지! 고민 없이 떠나는 ${location} BEST ${placeCount}'"
+  ],
+  "placeAssetCards": [
+    {
+      "name": "각 장소명",
+      "highlightTip": "이 장소를 글에서 다룰 때 강조할 핵심 포인트 1줄",
+      "photoPrompt": "Detailed English realistic travel photo prompt for Midjourney/DALL-E, 4:3 ratio, high quality, natural lighting"
+    }
+  ],
+  "thumbnailPrompt": "Breathtaking wide travel banner of ${location} featuring iconic landmarks and picturesque atmosphere, cinematic lighting, 8k ultra detailed photography --ar 16:9"
+}`;
+
+        const aiText = await window.BlogAPI.generateWithGemini(apiKey, model, prompt);
+        const jsonMatch = aiText.match(/\{[\s\S]*\}/);
+        if (jsonMatch) {
+          const parsed = JSON.parse(jsonMatch[0]);
+          return parsed;
+        }
+      } catch (err) {
+        console.warn('Step 2 AI 생성 오류, 스마트 폴백:', err);
+      }
+    }
+
+    // 스마트 룰베이스 폴백
+    const placeCards = placesList.map((p, idx) => {
+      const pName = typeof p === 'object' ? p.name : String(p);
+      const pWhy = typeof p === 'object' ? p.whyRecommend : '여행객들이 극찬하는 명소';
+      return {
+        name: pName,
+        highlightTip: `코스 ${idx + 1}번: ${pWhy.slice(0, 45)}...`,
+        photoPrompt: `Realistic aesthetic travel blog photography of ${pName} in ${location}, sunny clear day, vibrant natural colors, candid travel lifestyle moment, sharp focus, Canon EOS R5 --ar 4:3`
+      };
+    });
+
+    return {
+      summary: `${location}에서 가장 인기 있는 ${placeCount}곳(${combinedPlacesStr})을 엄선한 당일치기/1박2일 꿀조합 코스입니다. 관광 명소의 볼거리와 로컬 맛집의 미식, 감성 충만한 카페와 포토존까지 완벽한 밸런스를 갖추고 있어 ${theme} 여행을 계획하는 분들에게 최상의 만족을 선사합니다.`,
+      recommendedHours: `추천 동선: ${placeNames.map((n, i) => `${i + 1}. ${n}`).join(' ➔ ')} (총 예상 소요시간: 5~7시간)`,
+      seoKeywords: [
+        `${location}여행`,
+        `${location}가볼만한곳`,
+        `${location}코스추천`,
+        `${location}BEST${placeCount}`,
+        `${location}맛집추천`,
+        `${location}카페`,
+        `${location}${theme}`
+      ].concat(placeNames.slice(0, 3)),
+      metaDescription: `직접 다녀오고 엄선한 ${location} 가볼만한곳 BEST ${placeCount}! 관광지부터 로컬 맛집, 감성 카페까지 완벽한 당일치기 여행 코스와 주차, 웨이팅 꿀팁을 총정리해 드립니다.`,
+      titleSuggestions: [
+        `[2026 최신] ${location} 가볼만한곳 BEST ${placeCount}! 관광지·맛집·카페 완벽 코스 총정리`,
+        `실패 없는 ${location} 여행! 현지인이 추천하는 알짜 핫플레이스 ${placeCount}선 (동선&주차팁)`,
+        `뚜벅이도 하루 만에 정복하는 ${location} 필수 코스 모음집 (${combinedPlacesStr})`
+      ],
+      catchphrases: [
+        `리스트형: "고민 끝! ${location} 가볼만한곳 알짜배기 BEST ${placeCount} 완벽 정리"`,
+        `정보형: "이 동선대로만 가면 성공! ${location} 하루 알찬 여행 코스 대공개"`,
+        `감성형: "머무는 모든 순간이 힐링이었던 ${location}의 보물 같은 스팟들"`
+      ],
+      placeAssetCards: placeCards,
+      thumbnailPrompt: `Stunning panoramic wide travel photo banner of ${location}, cinematic atmosphere, beautiful golden hour sunlight, aesthetic composition, highly detailed 8k photography --ar 16:9`
+    };
+  },
+
+  // 3. 리스트형 블로그 본문 마스터 프롬프트(Listicle Master Prompt) 조합
+  buildMasterPrompt({ location, selectedPlaces, theme, tonePreset, targetWords, targetAudience, extraKeywords, step2Assets }) {
+    const toneObj = window.DEFAULT_DATA?.tonePresets?.find(t => t.id === tonePreset) || window.DEFAULT_DATA?.tonePresets[0];
+    const placesList = Array.isArray(selectedPlaces) ? selectedPlaces : [selectedPlaces];
+    const placeCount = placesList.length;
+
+    const placesDetailText = placesList.map((p, idx) => {
+      if (typeof p === 'object') {
+        return `[코스 ${idx + 1}] ${p.name} (${p.category || '명소'})
+- 추천 이유: ${p.whyRecommend || '인기 방문지'}
+- 주요 특징/메뉴: ${p.features || '시그니처 메뉴 및 볼거리'}
+- 주소: ${p.address || `${location} 일원`}
+- 운영정보/팁: ${p.operatingHours || '운영시간 확인 필요'}
+- 블로그 평가: ${p.recommendStats || '호평 다수'}`;
+      }
+      return `[코스 ${idx + 1}] ${p}`;
+    }).join('\n\n');
+
+    const keywordsStr = (step2Assets?.seoKeywords || []).concat(extraKeywords ? extraKeywords.split(',') : []).map(k => k.trim()).filter(Boolean).join(', ');
+
+    return `당신은 네이버/티스토리/워드프레스에서 수만 명의 구독자를 보유한 국내 최고의 여행 인플루언서이자 전문 콘텐츠 작가입니다.
+아래 기획 정보와 장소별 상세 메타를 100% 반영하여, 독자들이 스크랩(저장)하고 공유할 수밖에 없는 최고 수준의 '리스트형(BEST ${placeCount} 코스 추천)' 블로그 완성형 포스팅을 작성해주세요.
+
+[1. 핵심 여행 정보]
+- 여행 지역: ${location}
+- 여행 테마: ${theme}
+- 추천 장소 개수: 총 ${placeCount}곳
+- 타겟 독자: ${targetAudience || '2030 자유여행객, 커플 데이트 및 주말 나들이족'}
+- 목표 글자수: 공백 포함 약 ${targetWords || 2200}자 이상
+
+[2. 톤앤매너 (${toneObj.name})]
+${toneObj.promptModifier}
+
+[3. 수록할 장소 리스트 및 상세 데이터]
+${placesDetailText}
+
+[4. 필수 반영 SEO 키워드 및 제목 가이드]
+- 추천 핵심 키워드: ${keywordsStr}
+- 클릭률 높은 매력적인 H1 제목으로 글을 시작할 것 (예: [2026 최신] ${location} 가볼만한곳 BEST ${placeCount}! 관광지부터 맛집·카페 완벽 코스)
+- 포커스 키워드가 서두, 본문 소제목, 마무리 문단에 자연스럽게 5~7회 스며들도록 작성하세요.
+
+[5. 리스트형 블로그 본문 필수 구성 체계]
+1) 매력적인 도입부:
+   - ${location} 여행을 떠나야 하는 이유와 이번 BEST ${placeCount} 코스를 선정한 기준(동선 효율성, 맛과 분위기 검증)을 생생하게 소개.
+2) 한눈에 보는 당일치기/추천 동선 요약:
+   - 인용구(>) 또는 리스트 서식으로 [1. 장소명 ➔ 2. 장소명 ➔ 3. 장소명 ...] 동선 로드맵 제시.
+3) 각 장소별 상세 소개 (H2 소제목: "## 1. [장소명] - [장소의 매력을 보여주는 한줄 타이틀]"):
+   - [왜 이곳을 추천하는가]: 실제 방문자의 시선에서 본 생생한 매력과 분위기
+   - [놓치면 안 되는 시그니처 & 볼거리]: 대표 메뉴의 맛 표현 또는 핵심 사진 포인트
+   - [블로거만의 방문 꿀팁 박스]:
+     • 📍 주소: (상세 주소)
+     • ⏰ 운영시간 & 휴무: (영업시간 및 브레이크타임)
+     • 💡 꿀팁: 웨이팅 피하는 시간대, 주차 위치, 주문 추천 팁
+4) 마무리 및 총평:
+   - 전체 코스를 알차게 즐기기 위한 대중교통/렌터카 동선 팁 요약
+   - 어떤 유형의 여행자(연인, 친구, 가족)에게 가장 추천하는지 총평
+   - 독자 소통 유도 질문(댓글, 공감, 스크랩 요청)
+
+[6. 출력 서식 규정]
+- 마크다운(#, ##, ###, -, >, **)을 적극 활용하여 모바일에서도 눈에 쏙 들어오게 깔끔하게 배치할 것.
+- 군더더기 서두("네, 작성해 드리겠습니다" 등) 없이 곧바로 '# [포스팅 제목]'부터 시작할 것.`;
+  },
+
+  // 4. 글자수 및 읽기 시간 통계
+  analyzeText(text = '') {
+    const clean = text || '';
+    const charWithSpaces = clean.length;
+    const charWithoutSpaces = clean.replace(/\s/g, '').length;
+    const words = clean.trim() ? clean.trim().split(/\s+/).length : 0;
+    const minutes = Math.max(1, Math.round(charWithoutSpaces / 500));
+    return {
+      charWithSpaces,
+      charWithoutSpaces,
+      words,
+      readingTime: `${minutes}분`
+    };
+  },
+
+  // 5. 마크다운을 티스토리/워드프레스용 클린 HTML로 변환
+  markdownToCleanHtml(md = '') {
+    if (!md) return '';
+    let html = md
+      .replace(/&/g, '&amp;')
+      .replace(/</g, '&lt;')
+      .replace(/>/g, '&gt;');
+
+    html = html.replace(/^### (.*$)/gim, '<h3 style="font-size: 1.25rem; font-weight: 700; margin-top: 1.5rem; margin-bottom: 0.75rem; color: #1e293b;">$1</h3>');
+    html = html.replace(/^## (.*$)/gim, '<h2 style="font-size: 1.45rem; font-weight: 800; margin-top: 2rem; margin-bottom: 1rem; padding-bottom: 0.5rem; border-bottom: 2px solid #e2e8f0; color: #0f172a;">$1</h2>');
+    html = html.replace(/^# (.*$)/gim, '<h1 style="font-size: 1.85rem; font-weight: 800; margin-bottom: 1.5rem; color: #0f172a;">$1</h1>');
+
+    html = html.replace(/^\> (.*$)/gim, '<blockquote style="border-left: 4px solid #3b82f6; padding: 0.75rem 1rem; margin: 1.25rem 0; font-style: normal; color: #334155; background: #f8fafc; border-radius: 0 0.5rem 0.5rem 0;">$1</blockquote>');
+
+    html = html.replace(/\*\*(.*?)\*\*/g, '<strong style="color: #0f172a; font-weight: 700;">$1</strong>');
+    html = html.replace(/\*(.*?)\*/g, '<em>$1</em>');
+
+    html = html.replace(/^\- (.*$)/gim, '<li style="margin-left: 1.25rem; margin-bottom: 0.35rem; list-style-type: disc;">$1</li>');
+
+    const lines = html.split('\n');
+    const processed = lines.map(line => {
+      const trimmed = line.trim();
+      if (!trimmed) return '<br/>';
+      if (trimmed.startsWith('<h') || trimmed.startsWith('<blockquote') || trimmed.startsWith('<li')) {
+        return trimmed;
+      }
+      return `<p style="line-height: 1.85; margin-bottom: 1rem; color: #334155;">${trimmed}</p>`;
+    });
+
+    return processed.join('\n');
+  },
+
+  // 6. 리스트형 특화 SNS 패키지 자동 생성
+  generateSnsPackage(articleText, { location, selectedPlaces = [], keywords = [] }) {
+    const placesList = Array.isArray(selectedPlaces) ? selectedPlaces : [selectedPlaces];
+    const placeNames = placesList.map(p => (typeof p === 'object' ? p.name : String(p))).filter(Boolean);
+    const count = placeNames.length;
+    const firstParagraph = (articleText || '').split('\n').filter(p => p.trim() && !p.startsWith('#'))[0] || `${location} 여행의 모든 것!`;
+
+    const hashtags = [`#${location.replace(/\s+/g, '')}여행`, `#${location.replace(/\s+/g, '')}가볼만한곳`, `#${location.replace(/\s+/g, '')}핫플`, '#여행코스', '#국내여행', '#여행블로그', '#데이트코스']
+      .concat(placeNames.map(n => `#${n.replace(/\s+/g, '')}`))
+      .concat(keywords.slice(0, 3).map(k => `#${k.replace(/\s+/g, '')}`))
+      .filter((v, i, a) => a.indexOf(v) === i)
+      .join(' ');
+
+    // 1. 인스타그램 카드뉴스형 캡션
+    const cardNewsSlides = placesList.map((p, idx) => {
+      const name = typeof p === 'object' ? p.name : p;
+      const why = typeof p === 'object' ? (p.whyRecommend || '').slice(0, 50) : '인기 스팟';
+      return `📍 Slide ${idx + 2}. ${name}\n👉 ${why}...`;
+    }).join('\n\n');
+
+    const instagram = `[저장필수] ${location} 여행 가면 무조건 가야 할 BEST ${count} 코스 총정리 📌
+
+${firstParagraph.slice(0, 140)}...
+
+─── 코스 미리보기 ───
+${placeNames.map((n, i) => `${i + 1}. ${n}`).join('\n')}
+
+─── 카드뉴스 요약 ───
+${cardNewsSlides}
+
+💡 방문 꿀팁 & 상세 주차/동선 정보는 프로필 링크의 블로그에서 지금 바로 확인해보세요!
+친구, 연인 태그하고 이번 주말 ${location} 떠나자 @친구소환
+
+${hashtags}`;
+
+    // 2. 스레드 / 페이스북용
+    const threads = `여기 진짜 저장해두고 가야 할 ${location} 알짜배기 ${count}곳 정리해왔어요 ✨
+
+${placeNames.map((n, i) => `${i + 1}️⃣ ${n}`).join('\n')}
+
+${firstParagraph.slice(0, 120)}...
+
+이번 주말에 이 코스대로만 가면 실패 확률 0%!
+다들 어디가 제일 가보고 싶으신가요? 댓글로 알려주세요 👇
+
+#여행 #${location} #여행스타그램`;
+
+    // 3. 트위터 / X 타래형 스레드
+    const twitter = `[1/3] 🧵 이번 여행 계획 중이라면 무조건 북마크해야 할 '${location} 필수 코스 BEST ${count}' 타래 시작합니다!
+👉 추천 코스: ${placeNames.join(' ➔ ')}
+
+[2/3] 📸 ${placeNames.slice(0, 2).join(', ')} 등 각 스팟별 대표메뉴와 주차/웨이팅 피하는 골든타임 팁 정리완료!
+
+[3/3] 🔗 블로그에 주소, 영업시간, 사진 포인트까지 싹 다 정리해뒀으니 여행 가실 때 참고하세요: [블로그 링크]
+#${location}여행 #여행정보`;
+
+    return {
+      instagram,
+      threads,
+      twitter,
+      hashtags
+    };
+  }
+};
+
+
+/* src/app.js */
+/**
+ * 여행 블로그 올인원 대시보드 - 메인 애플리케이션 제어기
+ * 리스트형 포스팅(관광지+맛집+카페 코스) 및 무제한 즐겨찾기 관리 지원
+ */
+
+// 전역 상태 관리
+const AppState = {
+  currentView: 'studio', // 'studio' | 'history' | 'favorites' | 'settings'
+  currentStep: 1,
+  selectedLocation: '제주도',
+  selectedTheme: '당일치기 알짜코스',
+  selectedPlaces: [], // 코스에 담긴 장소 객체 리스트 [{ name, category, whyRecommend, features, address, operatingHours, recommendStats }, ...]
+  selectedPlace: '', // 대표 장소명 또는 코스명
+  recommendations: null, // 카테고리별 추천 장소 데이터
+  step2Assets: null,
+  masterPrompt: '',
+  articleContent: '',
+  snsPackage: null,
+  activeMainFavCategory: 'ALL',
+  favPageCategory: 'ALL',
+  activePlaceCategory: 'ALL',
+  settings: {
+    geminiApiKey: '',
+    selectedModel: 'gemini-3.8-flash',
+    sheetsWebhookUrl: '',
+    autoSaveToSheets: true
+  },
+  quickLinks: [],
+  history: [],
+  activeOutputTab: 'markdown' // markdown, html, preview
+};
+
+// DOM 로드 시 초기화
+document.addEventListener('DOMContentLoaded', () => {
+  initApp();
+});
+
+function initApp() {
+  // 1. 설정 및 저장된 데이터 로드
+  AppState.settings = window.BlogStorage.getSettings();
+  AppState.quickLinks = window.BlogStorage.getQuickLinks();
+  AppState.history = window.BlogStorage.getHistory();
+
+  // 2. UI 초기 렌더링
+  renderHeaderStatus();
+  renderMainFavoritesList();
+  renderFavoritesPageView();
+  renderHistoryList();
+  setupEventListeners();
+  renderTonePresetSelector();
+
+  // 3. GAS 연동 코드 텍스트 채우기
+  initGasCodeView();
+
+  // 4. URL 해시 기반 뷰 라우팅 체크 (#history, #favorites, #settings, #studio)
+  const currentHash = window.location.hash.replace('#', '');
+  if (['studio', 'history', 'favorites', 'settings'].includes(currentHash)) {
+    switchView(currentHash, false);
+  } else {
+    switchView('studio', false);
+  }
+
+  // 해시 변경 감지
+  window.addEventListener('hashchange', () => {
+    const hash = window.location.hash.replace('#', '');
+    if (['studio', 'history', 'favorites', 'settings'].includes(hash)) {
+      switchView(hash, false);
+    }
+  });
+
+  // 5. 1단계 기본 지역 추천 로드 및 코스 초기화
+  handleSearchPlaces(false);
+
+  // 6. 단일 HTML 다운로더 초기화
+  setupDownloadSingleHtml();
+}
+
+// ─── [0. 페이지 뷰 전환 (Switch View - 팝업 없이 전체 페이지 전환)] ───
+function switchView(viewName, updateHash = true) {
+  const validViews = ['studio', 'history', 'favorites', 'settings'];
+  if (!validViews.includes(viewName)) viewName = 'studio';
+
+  AppState.currentView = viewName;
+
+  // 1. 모든 페이지 뷰 컨테이너 전환
+  validViews.forEach(v => {
+    const viewEl = document.getElementById(`view-${v}`);
+    const navBtn = document.getElementById(`nav-btn-${v}`);
+
+    if (viewEl) {
+      if (v === viewName) {
+        viewEl.classList.remove('hidden');
+      } else {
+        viewEl.classList.add('hidden');
+      }
+    }
+
+    if (navBtn) {
+      if (v === viewName) {
+        navBtn.className = 'nav-tab-btn flex items-center gap-1.5 px-3 py-1.5 text-xs font-bold rounded-lg transition-all bg-blue-600 text-white shadow-xs';
+      } else {
+        navBtn.className = 'nav-tab-btn flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold rounded-lg transition-all text-slate-600 hover:text-slate-900 hover:bg-white/80';
+      }
+    }
+  });
+
+  // 2. 뷰별 데이터 리프레시 및 동기화
+  if (viewName === 'history') {
+    renderHistoryList();
+  } else if (viewName === 'favorites') {
+    renderFavoritesPageView();
+  } else if (viewName === 'settings') {
+    populateSettingsFields();
+  }
+
+  // 3. 해시 업데이트
+  if (updateHash) {
+    window.location.hash = viewName;
+  }
+
+  // 4. 항상 화면 최상단으로 스크롤 (헤더 고정 유지)
+  window.scrollTo({ top: 0, behavior: 'smooth' });
+}
+window.switchView = switchView;
+
+// 설정 페이지 입력칸 데이터 채우기
+function populateSettingsFields() {
+  const keyInput = document.getElementById('settings-gemini-key');
+  const modelSelect = document.getElementById('settings-model-select');
+  const sheetsInput = document.getElementById('settings-sheets-url');
+
+  if (keyInput) keyInput.value = AppState.settings.geminiApiKey || '';
+  if (modelSelect) modelSelect.value = AppState.settings.selectedModel || 'gemini-3.8-flash';
+  if (sheetsInput) sheetsInput.value = AppState.settings.sheetsWebhookUrl || '';
+
+  const gPing = document.getElementById('gemini-ping-result');
+  const sPing = document.getElementById('sheets-ping-result');
+  if (gPing) gPing.innerHTML = '';
+  if (sPing) sPing.innerHTML = '';
+
+  initGasCodeView();
+}
+
+function initGasCodeView() {
+  const gasTextarea = document.getElementById('page-gas-code-textarea');
+  if (gasTextarea && window.GAS_CODE_TEMPLATE) {
+    gasTextarea.value = window.GAS_CODE_TEMPLATE;
+  }
+}
+
+function copyGasCode() {
+  const code = window.GAS_CODE_TEMPLATE || (document.getElementById('page-gas-code-textarea') ? document.getElementById('page-gas-code-textarea').value : '');
+  if (code) {
+    copyText(code);
+  } else {
+    showToast('복사할 연동 코드를 찾을 수 없습니다.', 'warning');
+  }
+}
+window.copyGasCode = copyGasCode;
+
+// ─── [1. 헤더 & 상태 뱃지] ───
+function renderHeaderStatus() {
+  const geminiBadge = document.getElementById('gemini-status-badge');
+  const sheetsBadge = document.getElementById('sheets-status-badge');
+
+  if (geminiBadge) {
+    if (AppState.settings.geminiApiKey) {
+      geminiBadge.className = 'inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-xs font-semibold bg-emerald-500/10 text-emerald-600 border border-emerald-500/20 cursor-pointer hover:bg-emerald-500/20 transition-colors';
+      geminiBadge.innerHTML = `<span class="w-2 h-2 rounded-full bg-emerald-500 animate-pulse"></span> ${AppState.settings.selectedModel}`;
+    } else {
+      geminiBadge.className = 'inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-xs font-semibold bg-amber-500/10 text-amber-700 border border-amber-500/20 cursor-pointer hover:bg-amber-500/20 transition-colors';
+      geminiBadge.innerHTML = `<span class="w-2 h-2 rounded-full bg-amber-500"></span> AI 미설정 (클릭하여 설정)`;
+    }
+  }
+
+  if (sheetsBadge) {
+    if (AppState.settings.sheetsWebhookUrl) {
+      sheetsBadge.className = 'inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-xs font-semibold bg-blue-500/10 text-blue-600 border border-blue-500/20 cursor-pointer hover:bg-blue-500/20 transition-colors';
+      sheetsBadge.innerHTML = `<span class="w-2 h-2 rounded-full bg-blue-500"></span> 시트 연동됨`;
+    } else {
+      sheetsBadge.className = 'inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-xs font-semibold bg-slate-200 text-slate-600 cursor-pointer hover:bg-slate-300 transition-colors';
+      sheetsBadge.innerHTML = `<span class="w-2 h-2 rounded-full bg-slate-400"></span> 로컬 저장 모드`;
+    }
+  }
+}
+
+// ─── [2. 즐겨찾기 시스템 (메인 하단 리스트 & 전용 페이지 뷰)] ───
+
+// 메인 페이지 가장 하단 리스트 렌더링
+function renderMainFavoritesList() {
+  const container = document.getElementById('main-favorites-list-container');
+  const counterEl = document.getElementById('main-fav-counter');
+
+  if (counterEl) {
+    counterEl.textContent = `총 ${AppState.quickLinks.length}개`;
+  }
+
+  if (!container) return;
+
+  const currentCat = AppState.activeMainFavCategory || 'ALL';
+  const filteredLinks = currentCat === 'ALL'
+    ? AppState.quickLinks
+    : AppState.quickLinks.filter(l => l.category === currentCat);
+
+  if (filteredLinks.length === 0) {
+    container.innerHTML = `
+      <div class="py-8 text-center text-slate-400 space-y-2">
+        <i class="fa-regular fa-folder-open text-2xl text-slate-300"></i>
+        <p class="text-xs">등록된 ${currentCat === 'ALL' ? '' : `'${currentCat}'`} 즐겨찾기가 없습니다.</p>
+        <button onclick="switchView('favorites'); togglePageAddFavForm(true);" class="mt-1 px-3 py-1.5 text-xs font-bold text-blue-600 bg-blue-50 rounded-lg hover:bg-blue-100 transition-colors">
+          + 즐겨찾기 페이지에서 새 사이트 등록하기
+        </button>
+      </div>
+    `;
+    return;
+  }
+
+  // 메인 하단 깔끔한 리스트(행) 형태로 렌더링
+  container.innerHTML = filteredLinks.map(link => {
+    let catBadgeColor = 'bg-slate-100 text-slate-700 border-slate-200';
+    let iconClass = 'fa-solid fa-arrow-up-right-from-square';
+
+    if (link.category === '블로그') {
+      catBadgeColor = 'bg-emerald-50 text-emerald-700 border-emerald-200';
+      iconClass = 'fa-solid fa-pen-nib';
+    } else if (link.category === '데이터') {
+      catBadgeColor = 'bg-blue-50 text-blue-700 border-blue-200';
+      iconClass = 'fa-solid fa-chart-simple';
+    } else if (link.category === '디자인') {
+      catBadgeColor = 'bg-purple-50 text-purple-700 border-purple-200';
+      iconClass = 'fa-solid fa-wand-magic-sparkles';
+    }
+
+    return `
+      <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-3 p-3.5 bg-slate-50/70 hover:bg-blue-50/40 rounded-xl border border-slate-200/80 hover:border-blue-200 transition-all group">
+        <!-- Site Info -->
+        <div class="flex items-center gap-3 min-w-0">
+          <span class="inline-flex items-center gap-1 px-2.5 py-1 rounded-md text-[11px] font-bold border ${catBadgeColor} shrink-0">
+            <i class="${iconClass} text-[9px]"></i>
+            <span>${escapeHtml(link.category || '기타')}</span>
+          </span>
+          <div class="min-w-0">
+            <h4 class="text-xs font-extrabold text-slate-800 group-hover:text-blue-600 transition-colors truncate">
+              ${escapeHtml(link.title)}
+            </h4>
+            <a href="${escapeHtml(link.url)}" target="_blank" rel="noopener noreferrer"
+              class="text-[11px] font-mono text-slate-400 hover:text-blue-500 truncate block transition-colors" title="${escapeHtml(link.url)}">
+              ${escapeHtml(link.url)}
+            </a>
+          </div>
+        </div>
+
+        <!-- Action Buttons -->
+        <div class="flex items-center gap-1.5 shrink-0 self-end sm:self-center">
+          <button onclick="copyText('${escapeHtml(link.url)}')" title="주소 복사"
+            class="px-2.5 py-1 text-slate-500 hover:text-blue-600 hover:bg-white border border-transparent hover:border-slate-200 rounded-lg text-xs font-medium transition-all flex items-center gap-1">
+            <i class="fa-regular fa-copy text-[11px]"></i>
+            <span class="text-[11px]">복사</span>
+          </button>
+          <a href="${escapeHtml(link.url)}" target="_blank" rel="noopener noreferrer"
+            class="px-3 py-1 bg-white hover:bg-blue-600 text-slate-700 hover:text-white border border-slate-200 hover:border-blue-600 rounded-lg text-xs font-bold transition-all shadow-2xs flex items-center gap-1.5">
+            <span class="text-[11px]">새 탭 열기</span>
+            <i class="fa-solid fa-arrow-up-right-from-square text-[9px]"></i>
+          </a>
+          <button onclick="deleteQuickLink('${link.id}')" title="즐겨찾기 삭제"
+            class="p-1.5 text-slate-300 hover:text-rose-500 hover:bg-rose-50 rounded-lg transition-colors">
+            <i class="fa-solid fa-trash-can text-xs"></i>
+          </button>
+        </div>
+      </div>
+    `;
+  }).join('');
+}
+
+// 메인 하단 카테고리 필터
+function filterMainFavoritesCategory(category) {
+  AppState.activeMainFavCategory = category;
+  const categories = ['ALL', '블로그', '데이터', '디자인', '기타'];
+
+  categories.forEach(cat => {
+    const btn = document.getElementById(`main-fav-tab-${cat}`);
+    if (btn) {
+      if (cat === category) {
+        btn.className = 'px-3 py-1 rounded-lg text-xs font-bold bg-blue-600 text-white shadow-2xs';
+      } else {
+        btn.className = 'px-3 py-1 rounded-lg text-xs font-medium bg-slate-100 text-slate-600 hover:bg-slate-200';
+      }
+    }
+  });
+
+  renderMainFavoritesList();
+}
+
+// ─── [2-1. 즐겨찾기 전용 페이지 렌더링 & 제어] ───
+function renderFavoritesPageView() {
+  const container = document.getElementById('page-favorites-grid');
+  const counterEl = document.getElementById('page-fav-counter');
+  const searchInput = document.getElementById('page-fav-search');
+  const query = searchInput ? searchInput.value.trim().toLowerCase() : '';
+  const currentCat = AppState.favPageCategory || 'ALL';
+
+  if (!container) return;
+
+  let list = AppState.quickLinks || [];
+
+  // 카테고리 필터
+  if (currentCat !== 'ALL') {
+    list = list.filter(l => l.category === currentCat);
+  }
+
+  // 검색어 필터
+  if (query) {
+    list = list.filter(l =>
+      (l.title && l.title.toLowerCase().includes(query)) ||
+      (l.url && l.url.toLowerCase().includes(query)) ||
+      (l.category && l.category.toLowerCase().includes(query))
+    );
+  }
+
+  if (counterEl) {
+    counterEl.textContent = `표시 ${list.length}개 / 전체 ${AppState.quickLinks.length}개`;
+  }
+
+  if (list.length === 0) {
+    container.innerHTML = `
+      <div class="py-16 text-center text-slate-400 bg-white rounded-2xl border border-slate-200 shadow-xs space-y-3">
+        <i class="fa-regular fa-bookmark text-4xl text-slate-300"></i>
+        <h4 class="text-sm font-bold text-slate-700">검색 조건에 맞는 즐겨찾기 사이트가 없습니다.</h4>
+        <p class="text-xs text-slate-400">다른 검색어를 입력하시거나 위 [새 즐겨찾기 등록] 버튼을 눌러 사이트를 등록해보세요.</p>
+        <button onclick="togglePageAddFavForm(true)" class="mt-2 px-4 py-2 text-xs font-bold text-white bg-blue-600 rounded-xl hover:bg-blue-700 shadow-xs">
+          + 새 즐겨찾기 등록하기
+        </button>
+      </div>
+    `;
+    return;
+  }
+
+  // 페이지 전체에 최적화된 와이드 행 리스트 포맷
+  container.innerHTML = list.map(link => {
+    let catBadgeColor = 'bg-slate-100 text-slate-700 border-slate-200';
+    let iconClass = 'fa-solid fa-arrow-up-right-from-square';
+
+    if (link.category === '블로그') {
+      catBadgeColor = 'bg-emerald-50 text-emerald-700 border-emerald-200';
+      iconClass = 'fa-solid fa-pen-nib';
+    } else if (link.category === '데이터') {
+      catBadgeColor = 'bg-blue-50 text-blue-700 border-blue-200';
+      iconClass = 'fa-solid fa-chart-simple';
+    } else if (link.category === '디자인') {
+      catBadgeColor = 'bg-purple-50 text-purple-700 border-purple-200';
+      iconClass = 'fa-solid fa-wand-magic-sparkles';
+    }
+
+    return `
+      <div class="bg-white rounded-2xl border border-slate-200/90 p-4 shadow-xs hover:shadow-sm hover:border-blue-300 transition-all flex flex-col md:grid md:grid-cols-12 md:items-center gap-3 group">
+        <!-- Col 1: 카테고리 -->
+        <div class="md:col-span-2 flex items-center gap-2">
+          <span class="inline-flex items-center gap-1.5 px-3 py-1 rounded-lg text-xs font-bold border ${catBadgeColor}">
+            <i class="${iconClass} text-[10px]"></i>
+            <span>${escapeHtml(link.category || '기타')}</span>
+          </span>
+        </div>
+
+        <!-- Col 2: 사이트명 -->
+        <div class="md:col-span-4 min-w-0">
+          <a href="${escapeHtml(link.url)}" target="_blank" rel="noopener noreferrer"
+            class="text-sm font-extrabold text-slate-900 hover:text-blue-600 transition-colors flex items-center gap-1.5">
+            <span>${escapeHtml(link.title)}</span>
+            <i class="fa-solid fa-arrow-up-right-from-square text-[10px] text-slate-400 group-hover:text-blue-500"></i>
+          </a>
+        </div>
+
+        <!-- Col 3: URL 주소 -->
+        <div class="md:col-span-4 min-w-0">
+          <a href="${escapeHtml(link.url)}" target="_blank" rel="noopener noreferrer"
+            class="text-xs font-mono text-slate-500 hover:text-blue-600 truncate block transition-colors" title="${escapeHtml(link.url)}">
+            ${escapeHtml(link.url)}
+          </a>
+        </div>
+
+        <!-- Col 4: 액션 버튼 -->
+        <div class="md:col-span-2 flex items-center justify-end gap-1.5 pt-2 md:pt-0 border-t md:border-t-0 border-slate-100">
+          <button onclick="copyText('${escapeHtml(link.url)}')" title="링크 주소 복사"
+            class="px-2.5 py-1.5 text-xs font-medium text-slate-600 hover:text-blue-600 hover:bg-blue-50 rounded-xl transition-colors flex items-center gap-1">
+            <i class="fa-regular fa-copy text-[11px]"></i>
+            <span class="text-xs">복사</span>
+          </button>
+          <a href="${escapeHtml(link.url)}" target="_blank" rel="noopener noreferrer"
+            class="px-3 py-1.5 text-xs font-bold bg-blue-600 hover:bg-blue-700 text-white rounded-xl shadow-2xs transition-colors flex items-center gap-1">
+            <span>새 탭 열기</span>
+            <i class="fa-solid fa-arrow-up-right-from-square text-[9px]"></i>
+          </a>
+          <button onclick="deleteQuickLink('${link.id}')" title="즐겨찾기 삭제"
+            class="p-1.5 text-slate-300 hover:text-rose-500 hover:bg-rose-50 rounded-xl transition-colors ml-1">
+            <i class="fa-solid fa-trash-can text-xs"></i>
+          </button>
+        </div>
+      </div>
+    `;
+  }).join('');
+}
+
+function setPageFavCategory(cat) {
+  AppState.favPageCategory = cat;
+  const categories = ['ALL', '블로그', '데이터', '디자인', '기타'];
+
+  categories.forEach(c => {
+    const btn = document.getElementById(`page-fav-cat-${c}`);
+    if (btn) {
+      if (c === cat) {
+        btn.className = 'px-3 py-1.5 rounded-lg text-xs font-bold bg-slate-900 text-white shadow-xs';
+      } else {
+        btn.className = 'px-3 py-1.5 rounded-lg text-xs font-medium bg-slate-100 text-slate-700 hover:bg-slate-200';
+      }
+    }
+  });
+
+  renderFavoritesPageView();
+}
+
+function togglePageAddFavForm(forceOpen) {
+  const formCard = document.getElementById('page-fav-add-card');
+  if (!formCard) return;
+
+  if (forceOpen === true) {
+    formCard.classList.remove('hidden');
+    document.getElementById('page-fav-name')?.focus();
+  } else if (forceOpen === false) {
+    formCard.classList.add('hidden');
+  } else {
+    formCard.classList.toggle('hidden');
+    if (!formCard.classList.contains('hidden')) {
+      document.getElementById('page-fav-name')?.focus();
+    }
+  }
+}
+
+function savePageNewFavorite() {
+  const nameInput = document.getElementById('page-fav-name');
+  const urlInput = document.getElementById('page-fav-url');
+  const catInput = document.getElementById('page-fav-cat');
+
+  const title = nameInput ? nameInput.value.trim() : '';
+  const url = urlInput ? urlInput.value.trim() : '';
+  const category = catInput ? catInput.value : '블로그';
+
+  if (!title || !url || url === 'https://') {
+    showToast('사이트 이름과 올바른 웹사이트 URL을 입력해주세요.', 'warning');
+    return;
+  }
+
+  const newLink = {
+    id: 'fav-' + Date.now(),
+    title,
+    url,
+    category,
+    icon: 'fa-solid fa-arrow-up-right-from-square'
+  };
+
+  AppState.quickLinks.push(newLink);
+  window.BlogStorage.saveQuickLinks(AppState.quickLinks);
+
+  // 인풋 초기화 및 폼 닫기
+  if (nameInput) nameInput.value = '';
+  if (urlInput) urlInput.value = 'https://';
+  togglePageAddFavForm(false);
+
+  // 뷰 동기화
+  renderMainFavoritesList();
+  renderFavoritesPageView();
+  showToast(`'${title}' 사이트가 즐겨찾기에 등록되었습니다!`, 'success');
+
+  // 스프레드시트 동기화
+  if (AppState.settings.sheetsWebhookUrl) {
+    window.BlogAPI.syncToGoogleSheets(AppState.settings.sheetsWebhookUrl, 'saveQuickLinks', AppState.quickLinks);
+  }
+}
+
+function deleteQuickLink(id) {
+  AppState.quickLinks = AppState.quickLinks.filter(l => l.id !== id);
+  window.BlogStorage.saveQuickLinks(AppState.quickLinks);
+  renderMainFavoritesList();
+  renderFavoritesPageView();
+  showToast('즐겨찾기 사이트가 삭제되었습니다.', 'info');
+}
+
+// 하위 호환성 별칭
+function renderQuickLinks() {
+  renderMainFavoritesList();
+  renderFavoritesPageView();
+}
+function openAddQuickLinkModal() {
+  switchView('favorites');
+  togglePageAddFavForm(true);
+}
+function openFullscreenFavoritesView() {
+  switchView('favorites');
+}
+function openSettingsModal() {
+  switchView('settings');
+}
+window.renderQuickLinks = renderQuickLinks;
+window.openAddQuickLinkModal = openAddQuickLinkModal;
+window.openFullscreenFavoritesView = openFullscreenFavoritesView;
+window.openSettingsModal = openSettingsModal;
+window.renderFavoritesPageView = renderFavoritesPageView;
+window.setPageFavCategory = setPageFavCategory;
+window.togglePageAddFavForm = togglePageAddFavForm;
+window.savePageNewFavorite = savePageNewFavorite;
+window.deleteQuickLink = deleteQuickLink;
+window.filterMainFavoritesCategory = filterMainFavoritesCategory;
+
+// ─── [3. 워크플로우 스텝 제어] ───
+function goToStep(stepNumber) {
+  if (stepNumber < 1 || stepNumber > 4) return;
+  AppState.currentStep = stepNumber;
+
+  for (let i = 1; i <= 4; i++) {
+    const stepBtn = document.getElementById(`step-indicator-${i}`);
+    const stepPanel = document.getElementById(`step-panel-${i}`);
+
+    if (stepPanel) {
+      if (i === stepNumber) {
+        stepPanel.classList.remove('hidden');
+      } else {
+        stepPanel.classList.add('hidden');
+      }
+    }
+
+    if (stepBtn) {
+      if (i === stepNumber) {
+        stepBtn.className = 'flex items-center gap-2 px-3.5 py-2 rounded-xl text-xs sm:text-sm font-bold bg-blue-600 text-white shadow-xs ring-2 ring-blue-500/20';
+      } else if (i < stepNumber) {
+        stepBtn.className = 'flex items-center gap-2 px-3.5 py-2 rounded-xl text-xs sm:text-sm font-semibold bg-emerald-50 text-emerald-700 hover:bg-emerald-100 border border-emerald-200 transition-colors';
+      } else {
+        stepBtn.className = 'flex items-center gap-2 px-3.5 py-2 rounded-xl text-xs sm:text-sm font-medium bg-slate-100 text-slate-600 hover:bg-slate-200 transition-colors';
+      }
+    }
+  }
+
+  window.scrollTo({ top: 120, behavior: 'smooth' });
+}
+
+// ─── [3-1. 메인 홈으로 이동 (어디서든 1단계 메인 첫 화면으로 즉각 복귀)] ───
+function navigateToHome() {
+  // 1. 스튜디오 뷰로 전환
+  switchView('studio');
+
+  // 2. 1단계(메인 기획/장소 탐색)로 전환
+  goToStep(1);
+
+  // 3. 최상단으로 부드럽게 스크롤
+  window.scrollTo({ top: 0, behavior: 'smooth' });
+}
+window.navigateToHome = navigateToHome;
+
+// ─── [4. Step 1: 리스트형 장소 & 코스 바스켓 탐색] ───
+async function handleSearchPlaces(showAnimation = true) {
+  const locationInput = document.getElementById('location-input');
+  const themeSelect = document.getElementById('theme-select');
+  const location = locationInput ? locationInput.value.trim() : '제주도';
+  const theme = themeSelect ? themeSelect.value : '당일치기 알짜코스';
+
+  AppState.selectedLocation = location;
+  AppState.selectedTheme = theme;
+
+  const btn = document.getElementById('btn-search-places');
+  if (btn && showAnimation) {
+    btn.disabled = true;
+    btn.innerHTML = `<i class="fa-solid fa-spinner fa-spin"></i> 탐색 중...`;
+  }
+
+  try {
+    const recs = await window.BlogGenerators.generatePlaceRecommendations(
+      location,
+      theme,
+      AppState.settings.geminiApiKey,
+      AppState.settings.selectedModel
+    );
+
+    AppState.recommendations = recs;
+    renderCourseBasket();
+    renderRecommendations();
+
+    if (showAnimation) {
+      showToast(`'${location}' 상세 장소 데이터가 준비되었습니다!`, 'success');
+    }
+  } catch (err) {
+    console.error(err);
+    showToast('장소 탐색 중 오류가 발생했습니다.', 'error');
+  } finally {
+    if (btn && showAnimation) {
+      btn.disabled = false;
+      btn.innerHTML = `<i class="fa-solid fa-wand-magic-sparkles"></i> 상세 장소 데이터 탐색`;
+    }
+  }
+}
+
+// 추천 장소 카테고리 필터 전환
+function filterPlaceCategory(category) {
+  AppState.activePlaceCategory = category;
+  const categories = ['ALL', 'sightseeing', 'food', 'cafe', 'photo'];
+
+  categories.forEach(cat => {
+    const btn = document.getElementById(`pcat-${cat}`);
+    if (btn) {
+      if (cat === category) {
+        btn.className = 'px-3 py-1.5 rounded-xl font-bold bg-blue-600 text-white shadow-xs';
+      } else {
+        btn.className = 'px-3 py-1.5 rounded-xl font-medium bg-white text-slate-600 hover:bg-slate-100 border border-slate-200';
+      }
+    }
+  });
+
+  renderRecommendations();
+}
+
+// 장소 상세 카드 렌더링 (설명, 추천이유, 메뉴, 주소, 운영정보, 지표 모두 표시)
+function renderRecommendations() {
+  const container = document.getElementById('recommendations-grid');
+  const recs = AppState.recommendations;
+  if (!container || !recs) return;
+
+  const activeCat = AppState.activePlaceCategory || 'ALL';
+
+  // 카테고리 메타 정의
+  const categoryDefs = {
+    sightseeing: { label: '관광지 & 랜드마크', icon: 'fa-landmark', badgeColor: 'bg-blue-50 text-blue-700 border-blue-200' },
+    food: { label: '대표 맛집', icon: 'fa-utensils', badgeColor: 'bg-orange-50 text-orange-700 border-orange-200' },
+    cafe: { label: '감성 카페', icon: 'fa-mug-hot', badgeColor: 'bg-amber-50 text-amber-700 border-amber-200' },
+    photo: { label: '인생샷 명소', icon: 'fa-camera', badgeColor: 'bg-purple-50 text-purple-700 border-purple-200' },
+    hidden: { label: '현지인 히든스팟', icon: 'fa-compass', badgeColor: 'bg-emerald-50 text-emerald-700 border-emerald-200' }
+  };
+
+  // 노출할 장소 목록 취합
+  let placesToShow = [];
+  const keys = activeCat === 'ALL'
+    ? ['sightseeing', 'food', 'cafe', 'photo', 'hidden']
+    : [activeCat];
+
+  keys.forEach(k => {
+    const items = recs[k] || [];
+    items.forEach(item => {
+      placesToShow.push({
+        ...item,
+        categoryKey: k
+      });
+    });
+  });
+
+  if (placesToShow.length === 0) {
+    container.innerHTML = `
+      <div class="col-span-full py-12 text-center text-slate-400 bg-white rounded-2xl border border-slate-200 p-8">
+        <i class="fa-solid fa-map-pin text-3xl text-slate-300 mb-2"></i>
+        <p class="text-xs">해당 카테고리의 장소 데이터가 없습니다.</p>
+      </div>
+    `;
+    return;
+  }
+
+  container.innerHTML = placesToShow.map(place => {
+    const catDef = categoryDefs[place.categoryKey] || { label: '추천 장소', icon: 'fa-map-pin', badgeColor: 'bg-slate-50 text-slate-700 border-slate-200' };
+    const isSelected = AppState.selectedPlaces.some(p => p.name === place.name);
+    const selectedIndex = AppState.selectedPlaces.findIndex(p => p.name === place.name);
+
+    // 네이버 지도 및 블로그 검색용 쿼리
+    const searchQuery = `${place.name} ${place.address || AppState.selectedLocation}`;
+    const naverMapUrl = `https://map.naver.com/p/search/${encodeURIComponent(searchQuery)}`;
+    const naverBlogUrl = `https://search.naver.com/search.naver?query=${encodeURIComponent(place.name + ' 내돈내산 후기')}`;
+    const kakaoMapUrl = `https://map.kakao.com/?q=${encodeURIComponent(place.name)}`;
+
+    return `
+      <div class="bg-white rounded-2xl border ${isSelected ? 'border-blue-500 ring-2 ring-blue-500/20 shadow-md' : 'border-slate-200/90 hover:border-slate-300 shadow-xs'} p-5 flex flex-col justify-between transition-all group hover:shadow-md">
+        <div class="space-y-3.5">
+          <!-- Card Header: Category Badge + Naver Validation Stats + Selection Status -->
+          <div class="flex items-center justify-between gap-2">
+            <span class="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-xs font-bold border ${catDef.badgeColor}">
+              <i class="fa-solid ${catDef.icon} text-[10px]"></i>
+              <span>${catDef.label}</span>
+            </span>
+
+            ${isSelected ? `
+              <span class="inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-xs font-extrabold bg-blue-600 text-white shadow-2xs">
+                <i class="fa-solid fa-check"></i> 코스 ${selectedIndex + 1}번 선택됨
+              </span>
+            ` : `
+              <span class="inline-flex items-center gap-1 px-2 py-0.5 rounded-md text-[10px] font-bold bg-emerald-50 text-emerald-700 border border-emerald-200" title="실사용자 및 블로그 검증 지표">
+                <i class="fa-solid fa-square-check text-emerald-500 text-[9px]"></i>
+                <span class="truncate max-w-[170px]">${escapeHtml(place.recommendStats || '네이버 리뷰 검증 완료')}</span>
+              </span>
+            `}
+          </div>
+
+          <!-- Place Title & Live Map Link -->
+          <div class="flex items-start justify-between gap-2">
+            <h4 class="text-base font-extrabold text-slate-900 group-hover:text-blue-600 transition-colors">
+              ${escapeHtml(place.name)}
+            </h4>
+            <a href="${naverMapUrl}" target="_blank" rel="noopener noreferrer"
+              class="shrink-0 text-[11px] font-bold text-emerald-600 hover:text-emerald-700 bg-emerald-50 hover:bg-emerald-100 px-2 py-1 rounded-lg border border-emerald-200/80 flex items-center gap-1 transition-colors"
+              title="네이버 지도에서 실시간 리뷰와 평점, 영업정보 확인하기">
+              <span>네이버지도</span>
+              <i class="fa-solid fa-arrow-up-right-from-square text-[9px]"></i>
+            </a>
+          </div>
+
+          <!-- Why Recommend Box (핵심 추천 이유 & 매력 포인트) -->
+          <div class="bg-amber-50/70 border border-amber-200/80 rounded-xl p-3 text-xs leading-relaxed text-amber-950">
+            <div class="font-extrabold text-amber-800 flex items-center gap-1.5 mb-1 text-[11px]">
+              <i class="fa-solid fa-lightbulb text-amber-500"></i>
+              <span>왜 이 장소를 글에 넣어야 할까요?</span>
+            </div>
+            <p class="font-medium text-slate-800">${escapeHtml(place.whyRecommend || '많은 여행자와 블로거들이 강력 추천하는 필수 코스입니다.')}</p>
+          </div>
+
+          <!-- Features & Menu (어떤 음식을 팔고, 어떤 볼거리가 있는가?) -->
+          <div class="bg-slate-50 border border-slate-200/70 rounded-xl p-3 text-xs space-y-1">
+            <div class="font-bold text-slate-700 flex items-center gap-1.5 text-[11px]">
+              <i class="fa-solid fa-utensils text-orange-500"></i>
+              <span>대표 메뉴 구성 & 주요 매력/볼거리</span>
+            </div>
+            <p class="text-slate-700 font-medium leading-relaxed">
+              ${escapeHtml(place.features || '시그니처 메뉴 및 분위기 좋은 공간')}
+            </p>
+          </div>
+
+          <!-- Address & Operating Hours Info -->
+          <div class="space-y-1.5 text-[11px] text-slate-600 pt-0.5">
+            <div class="flex items-start gap-1.5">
+              <i class="fa-solid fa-location-dot text-rose-400 mt-0.5 shrink-0"></i>
+              <span class="text-slate-800 font-medium">${escapeHtml(place.address || AppState.selectedLocation + ' 일대')}</span>
+            </div>
+            <div class="flex items-start gap-1.5">
+              <i class="fa-regular fa-clock text-blue-400 mt-0.5 shrink-0"></i>
+              <span>${escapeHtml(place.operatingHours || '영업시간 및 휴무일 방문 전 확인 권장')}</span>
+            </div>
+          </div>
+
+          <!-- Real-time Verification Action Links -->
+          <div class="pt-2 border-t border-slate-100 flex items-center justify-between gap-1.5 text-xs">
+            <div class="text-[10px] text-slate-400 font-bold">실시간 검증:</div>
+            <div class="flex items-center gap-1.5">
+              <a href="${naverMapUrl}" target="_blank" rel="noopener noreferrer"
+                class="px-2 py-1 text-[10px] font-bold text-slate-600 hover:text-emerald-700 bg-slate-100 hover:bg-emerald-50 rounded-md border border-slate-200 transition-colors flex items-center gap-1">
+                <i class="fa-solid fa-map-location-dot text-emerald-500"></i>
+                <span>리뷰·저장수 보기</span>
+              </a>
+              <a href="${naverBlogUrl}" target="_blank" rel="noopener noreferrer"
+                class="px-2 py-1 text-[10px] font-bold text-slate-600 hover:text-blue-700 bg-slate-100 hover:bg-blue-50 rounded-md border border-slate-200 transition-colors flex items-center gap-1">
+                <i class="fa-solid fa-magnifying-glass text-blue-500"></i>
+                <span>내돈내산 후기</span>
+              </a>
+              <a href="${kakaoMapUrl}" target="_blank" rel="noopener noreferrer"
+                class="px-2 py-1 text-[10px] font-bold text-slate-600 hover:text-amber-700 bg-slate-100 hover:bg-amber-50 rounded-md border border-slate-200 transition-colors flex items-center gap-1" title="카카오맵에서 보기">
+                <i class="fa-solid fa-location-arrow text-amber-500"></i>
+              </a>
+            </div>
+          </div>
+        </div>
+
+        <!-- Card Course Toggle Button -->
+        <div class="pt-3 mt-3 border-t border-slate-100">
+          <button onclick="togglePlaceInCourse('${escapeHtml(place.name)}')"
+            class="w-full py-2.5 rounded-xl font-bold text-xs transition-all flex items-center justify-center gap-1.5 ${
+              isSelected 
+                ? 'bg-rose-50 hover:bg-rose-100 text-rose-600 border border-rose-200' 
+                : 'bg-blue-600 hover:bg-blue-700 text-white shadow-xs'
+            }">
+            ${isSelected ? `
+              <i class="fa-solid fa-xmark"></i>
+              <span>코스에서 제외하기</span>
+            ` : `
+              <i class="fa-solid fa-plus"></i>
+              <span>+ 이번 글(코스)에 담기</span>
+            `}
+          </button>
+        </div>
+      </div>
+    `;
+  }).join('');
+}
+
+// 코스 바스켓에 장소 추가/제거 토글
+function togglePlaceInCourse(placeName) {
+  const existingIdx = AppState.selectedPlaces.findIndex(p => p.name === placeName);
+
+  if (existingIdx >= 0) {
+    AppState.selectedPlaces.splice(existingIdx, 1);
+    showToast(`'${placeName}'(이)가 코스에서 제외되었습니다.`, 'info');
+  } else {
+    // 추천 데이터에서 해당 장소 객체 찾기
+    let targetPlace = null;
+    if (AppState.recommendations) {
+      for (const cat of Object.keys(AppState.recommendations)) {
+        const found = AppState.recommendations[cat]?.find(p => p.name === placeName);
+        if (found) {
+          targetPlace = found;
+          break;
+        }
+      }
+    }
+
+    if (!targetPlace) {
+      targetPlace = {
+        name: placeName,
+        category: 'sightseeing',
+        whyRecommend: '방문객 호평이 이어지는 대표 추천 코스입니다.',
+        features: '매력적인 콘텐츠와 볼거리',
+        address: AppState.selectedLocation,
+        operatingHours: '상세 정보 본문 반영',
+        recommendStats: '추천 장소'
+      };
+    }
+
+    AppState.selectedPlaces.push(targetPlace);
+    showToast(`'${placeName}'(이)가 ${AppState.selectedPlaces.length}번째 코스로 추가되었습니다!`, 'success');
+  }
+
+  renderCourseBasket();
+  renderRecommendations();
+}
+
+// 리스트형 코스 바스켓 UI 렌더링
+function renderCourseBasket() {
+  const container = document.getElementById('selected-places-list');
+  const countBadge = document.getElementById('selected-count-badge');
+  const statsSummary = document.getElementById('selected-stats-summary');
+  const proceedBtn = document.getElementById('btn-proceed-to-step2');
+  const proceedText = document.getElementById('btn-proceed-step2-text');
+
+  const places = AppState.selectedPlaces;
+  const count = places.length;
+
+  if (countBadge) {
+    countBadge.textContent = `${count}곳 선택됨`;
+  }
+
+  // 카테고리별 통계 계산
+  let catCounts = { sightseeing: 0, food: 0, cafe: 0, photo: 0 };
+  places.forEach(p => {
+    const c = p.category || 'sightseeing';
+    if (catCounts[c] !== undefined) catCounts[c]++;
+  });
+
+  if (statsSummary) {
+    if (count === 0) {
+      statsSummary.textContent = '관광지, 맛집, 카페, 포토스팟을 원하는 순서대로 자유롭게 조합하세요.';
+    } else {
+      statsSummary.textContent = `현재 조합: 관광지 ${catCounts.sightseeing}곳, 맛집 ${catCounts.food}곳, 카페 ${catCounts.cafe}곳, 포토스팟 ${catCounts.photo}곳`;
+    }
+  }
+
+  if (proceedBtn) {
+    proceedBtn.disabled = count === 0;
+  }
+  if (proceedText) {
+    proceedText.textContent = count > 0
+      ? `선택한 ${count}개 장소로 리스트형 2단계 진행 ➔`
+      : '장소를 1곳 이상 선택해주세요';
+  }
+
+  if (!container) return;
+
+  if (count === 0) {
+    container.innerHTML = `
+      <div class="text-xs text-slate-400 py-2 flex items-center gap-2">
+        <i class="fa-regular fa-hand-pointer text-blue-400"></i>
+        <span>아래 추천 카드에서 <strong>[+ 이번 글에 담기]</strong> 버튼을 누르거나, 위 <strong>[알짜 BEST 코스 자동 담기]</strong>를 눌러보세요!</span>
+      </div>
+    `;
+    return;
+  }
+
+  container.innerHTML = places.map((place, idx) => {
+    let icon = 'fa-landmark';
+    if (place.category === 'food') icon = 'fa-utensils';
+    else if (place.category === 'cafe') icon = 'fa-mug-hot';
+    else if (place.category === 'photo') icon = 'fa-camera';
+
+    return `
+      <div class="bg-white/10 hover:bg-white/15 border border-white/20 rounded-xl px-3 py-2 text-xs flex items-center gap-2 transition-all shadow-2xs">
+        <span class="w-5 h-5 rounded-full bg-blue-500 text-white font-extrabold flex items-center justify-center text-[10px] shrink-0">
+          ${idx + 1}
+        </span>
+        <i class="fa-solid ${icon} text-[11px] text-blue-300"></i>
+        <div class="flex flex-col">
+          <span class="font-bold text-white text-xs">${escapeHtml(place.name)}</span>
+          <span class="text-[10px] text-slate-300 truncate max-w-[120px]">${escapeHtml(place.features || '')}</span>
+        </div>
+        <div class="flex items-center gap-1 ml-2 pl-2 border-l border-white/20">
+          <button onclick="moveCoursePlace(${idx}, -1)" title="순서 위로" class="text-slate-400 hover:text-white p-0.5 ${idx === 0 ? 'opacity-30 cursor-not-allowed' : ''}">
+            <i class="fa-solid fa-chevron-up text-[10px]"></i>
+          </button>
+          <button onclick="moveCoursePlace(${idx}, 1)" title="순서 아래로" class="text-slate-400 hover:text-white p-0.5 ${idx === count - 1 ? 'opacity-30 cursor-not-allowed' : ''}">
+            <i class="fa-solid fa-chevron-down text-[10px]"></i>
+          </button>
+          <button onclick="togglePlaceInCourse('${escapeHtml(place.name)}')" title="코스에서 제거" class="text-slate-400 hover:text-rose-400 p-0.5 ml-1">
+            <i class="fa-solid fa-xmark text-xs"></i>
+          </button>
+        </div>
+      </div>
+    `;
+  }).join('');
+}
+
+// 순서 이동
+function moveCoursePlace(index, direction) {
+  const newIndex = index + direction;
+  if (newIndex < 0 || newIndex >= AppState.selectedPlaces.length) return;
+
+  const temp = AppState.selectedPlaces[index];
+  AppState.selectedPlaces[index] = AppState.selectedPlaces[newIndex];
+  AppState.selectedPlaces[newIndex] = temp;
+
+  renderCourseBasket();
+  renderRecommendations();
+}
+
+// 알짜 BEST 코스 자동 담기 (관광지 2 + 맛집 1 + 카페 1)
+function handleAutoSelectBestCourse() {
+  const recs = AppState.recommendations;
+  if (!recs) {
+    showToast('장소 데이터를 탐색 중입니다. 잠시 후 다시 시도해주세요.', 'warning');
+    return;
+  }
+
+  const selected = [];
+  // 관광지 2곳
+  if (recs.sightseeing && recs.sightseeing.length > 0) {
+    selected.push(recs.sightseeing[0]);
+    if (recs.sightseeing.length > 1) selected.push(recs.sightseeing[1]);
+  }
+  // 맛집 1곳
+  if (recs.food && recs.food.length > 0) {
+    selected.push(recs.food[0]);
+  }
+  // 카페 1곳
+  if (recs.cafe && recs.cafe.length > 0) {
+    selected.push(recs.cafe[0]);
+  }
+
+  AppState.selectedPlaces = selected;
+  renderCourseBasket();
+  renderRecommendations();
+  showToast('추천 대표 코스(관광지2 + 맛집1 + 카페1)가 자동으로 담겼습니다!', 'success');
+}
+
+// 바스켓 비우기
+function handleClearCourseBasket() {
+  if (AppState.selectedPlaces.length === 0) return;
+  AppState.selectedPlaces = [];
+  renderCourseBasket();
+  renderRecommendations();
+  showToast('코스 바스켓이 비워졌습니다.', 'info');
+}
+
+// 나만의 장소 직접 등록 모달 열기
+function openCustomPlaceModal() {
+  document.getElementById('cp-name-input').value = '';
+  document.getElementById('cp-why-input').value = '';
+  document.getElementById('cp-features-input').value = '';
+  document.getElementById('cp-address-input').value = AppState.selectedLocation;
+  document.getElementById('cp-hours-input').value = '';
+  openModal('custom-place-modal');
+}
+
+// 나만의 장소 저장 및 코스 추가
+function handleSaveCustomPlace() {
+  const name = document.getElementById('cp-name-input').value.trim();
+  const category = document.getElementById('cp-category-input').value;
+  const whyRecommend = document.getElementById('cp-why-input').value.trim();
+  const features = document.getElementById('cp-features-input').value.trim();
+  const address = document.getElementById('cp-address-input').value.trim();
+  const operatingHours = document.getElementById('cp-hours-input').value.trim();
+
+  if (!name || !whyRecommend) {
+    showToast('장소명과 추천 이유는 필수 입력 항목입니다.', 'warning');
+    return;
+  }
+
+  const customPlace = {
+    name,
+    category,
+    whyRecommend,
+    features: features || '방문 필수 시그니처 포인트',
+    address: address || AppState.selectedLocation,
+    operatingHours: operatingHours || '운영시간 확인 요망',
+    recommendStats: '사용자 직접 등록'
+  };
+
+  AppState.selectedPlaces.push(customPlace);
+  closeModal('custom-place-modal');
+  renderCourseBasket();
+  renderRecommendations();
+  showToast(`나만의 장소 '${name}'(이)가 코스에 추가되었습니다!`, 'success');
+}
+
+// ─── [5. Step 2: 리스트형 상세 기획 / 통합 SEO & 비주얼 에셋] ───
+function proceedToStep2() {
+  if (AppState.selectedPlaces.length === 0) {
+    showToast('코스 바스켓에 장소를 1곳 이상 담아주세요.', 'warning');
+    return;
+  }
+
+  // 대표 장소명 세팅 (리스트형 코스명)
+  AppState.selectedPlace = AppState.selectedPlaces.map(p => p.name).join(', ');
+
+  goToStep(2);
+  handleGenerateStep2Assets();
+}
+
+async function handleGenerateStep2Assets() {
+  const loadingBox = document.getElementById('step2-loading');
+  const contentBox = document.getElementById('step2-content');
+  if (loadingBox) loadingBox.classList.remove('hidden');
+  if (contentBox) contentBox.classList.add('hidden');
+
+  try {
+    const assets = await window.BlogGenerators.generateStep2Assets(
+      AppState.selectedLocation,
+      AppState.selectedPlaces,
+      AppState.selectedTheme,
+      AppState.settings.geminiApiKey,
+      AppState.settings.selectedModel
+    );
+
+    AppState.step2Assets = assets;
+    renderStep2Assets(assets);
+  } catch (err) {
+    console.error(err);
+    showToast('상세 기획 생성 중 오류가 발생했습니다.', 'error');
+  } finally {
+    if (loadingBox) loadingBox.classList.add('hidden');
+    if (contentBox) contentBox.classList.remove('hidden');
+  }
+}
+
+function renderStep2Assets(assets) {
+  // 1. 코스 로드맵 뱃지
+  const roadmapContainer = document.getElementById('step2-course-roadmap');
+  if (roadmapContainer) {
+    roadmapContainer.innerHTML = AppState.selectedPlaces.map((p, idx) => `
+      <span class="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-bold bg-slate-900 text-white shadow-2xs">
+        <span class="w-4 h-4 rounded-full bg-blue-500 text-[10px] flex items-center justify-center">${idx + 1}</span>
+        <span>${escapeHtml(p.name)}</span>
+        <span class="text-[10px] text-blue-300 font-normal">(${escapeHtml(p.features || '명소')})</span>
+      </span>
+      ${idx < AppState.selectedPlaces.length - 1 ? '<i class="fa-solid fa-arrow-right text-slate-400 text-[10px]"></i>' : ''}
+    `).join('');
+  }
+
+  // 2. 코스 동선 총평 & 소요 시간
+  const summaryEl = document.getElementById('step2-summary');
+  if (summaryEl) summaryEl.textContent = assets.summary;
+
+  const hoursEl = document.getElementById('step2-hours');
+  if (hoursEl) hoursEl.textContent = assets.recommendedHours;
+
+  // 3. SEO 메타 태그
+  const keywordsContainer = document.getElementById('step2-keywords-tags');
+  if (keywordsContainer) {
+    keywordsContainer.innerHTML = (assets.seoKeywords || []).map(k => `
+      <span class="inline-flex items-center px-2.5 py-1 rounded-md text-xs font-semibold bg-blue-50 text-blue-700 border border-blue-200">
+        #${escapeHtml(k)}
+      </span>
+    `).join('');
+  }
+
+  const metaDescEl = document.getElementById('step2-meta-description');
+  if (metaDescEl) metaDescEl.textContent = assets.metaDescription;
+
+  // 4. 추천 리스트형 블로그 제목
+  const titlesList = document.getElementById('step2-titles-list');
+  if (titlesList) {
+    titlesList.innerHTML = (assets.titleSuggestions || []).map((t, idx) => `
+      <div class="flex items-center justify-between p-2.5 bg-slate-50 hover:bg-slate-100/80 rounded-xl border border-slate-200 text-xs text-slate-800">
+        <span class="font-medium"><strong class="text-blue-600 font-bold mr-1">${idx + 1}.</strong> ${escapeHtml(t)}</span>
+        <button onclick="copyText('${escapeHtml(t)}')" class="text-slate-400 hover:text-blue-600 p-1" title="제목 복사">
+          <i class="fa-regular fa-copy"></i>
+        </button>
+      </div>
+    `).join('');
+  }
+
+  // 5. 각 장소별 상세 사진 촬영 팁 & AI 사진 프롬프트 카드 렌더링
+  const placeAssetsContainer = document.getElementById('step2-place-asset-cards');
+  if (placeAssetsContainer) {
+    const pAssets = assets.placeAssetCards || [];
+    placeAssetsContainer.innerHTML = pAssets.map(pa => `
+      <div class="bg-slate-50 rounded-2xl border border-slate-200 p-4 space-y-3">
+        <div class="flex items-center justify-between">
+          <span class="text-xs font-extrabold text-blue-600">${escapeHtml(pa.courseNumber)}</span>
+          <span class="px-2 py-0.5 rounded-md text-[10px] font-bold bg-white text-slate-600 border border-slate-200">${escapeHtml(pa.category)}</span>
+        </div>
+        <h4 class="text-sm font-extrabold text-slate-900">${escapeHtml(pa.placeName)}</h4>
+        
+        <div class="space-y-1 text-xs">
+          <span class="font-bold text-amber-700">📸 사진 촬영 & 본문 강조 팁:</span>
+          <p class="text-slate-600 bg-white p-2 rounded-lg border border-slate-200/60 leading-relaxed text-[11px]">${escapeHtml(pa.photoTip)}</p>
+        </div>
+
+        <div class="space-y-1">
+          <div class="flex items-center justify-between text-[11px]">
+            <span class="font-bold text-purple-700">AI 이미지 프롬프트 (Midjourney)</span>
+            <button onclick="copyText('${escapeHtml(pa.imagePrompt)}')" class="text-purple-600 hover:text-purple-800 font-semibold">복사</button>
+          </div>
+          <textarea rows="3" readonly class="w-full text-[11px] bg-white border border-slate-200 rounded-lg p-2 text-slate-700 font-mono resize-none focus:outline-none">${escapeHtml(pa.imagePrompt)}</textarea>
+        </div>
+      </div>
+    `).join('');
+  }
+
+  // 6. 대표 와이드 썸네일 프롬프트 & 캐치프레이즈
+  const imgThumb = document.getElementById('img-prompt-thumb');
+  if (imgThumb) imgThumb.value = assets.imagePrompts?.thumbnailWide || '';
+
+  const phrasesContainer = document.getElementById('step2-catchphrases');
+  if (phrasesContainer) {
+    phrasesContainer.innerHTML = (assets.catchphrases || []).map(p => `
+      <div class="flex items-center justify-between p-2.5 bg-amber-50/70 border border-amber-200/80 rounded-xl text-xs text-amber-950 font-medium">
+        <span>${escapeHtml(p)}</span>
+        <button onclick="copyText('${escapeHtml(p)}')" class="text-amber-700 hover:text-amber-950 p-1" title="문구 복사">
+          <i class="fa-regular fa-copy"></i>
+        </button>
+      </div>
+    `).join('');
+  }
+}
+
+function proceedToStep3() {
+  goToStep(3);
+  handleBuildMasterPrompt();
+}
+
+// ─── [6. Step 3: 톤앤매너 & 리스트형 마스터 프롬프트] ───
+function renderTonePresetSelector() {
+  const container = document.getElementById('tone-presets-container');
+  if (!container) return;
+
+  const presets = window.DEFAULT_DATA?.tonePresets || [];
+  container.innerHTML = presets.map((t, idx) => `
+    <label class="relative flex flex-col p-4 bg-white border border-slate-200 rounded-xl cursor-pointer hover:border-blue-400 transition-all shadow-xs has-checked:border-blue-600 has-checked:bg-blue-50/30 has-checked:ring-2 has-checked:ring-blue-500/20">
+      <input type="radio" name="tonePreset" value="${t.id}" ${idx === 0 ? 'checked' : ''} onchange="handleBuildMasterPrompt()" class="sr-only">
+      <div class="flex items-center justify-between mb-1.5">
+        <span class="text-sm font-bold text-slate-800">${t.name}</span>
+        <span class="px-2 py-0.5 text-[10px] font-semibold rounded-full bg-blue-100 text-blue-700">${t.badge}</span>
+      </div>
+      <p class="text-xs text-slate-500 leading-relaxed">${t.description}</p>
+    </label>
+  `).join('');
+}
+
+function handleBuildMasterPrompt() {
+  const selectedToneRadio = document.querySelector('input[name="tonePreset"]:checked');
+  const tonePreset = selectedToneRadio ? selectedToneRadio.value : 'friendly';
+  const targetWords = document.getElementById('target-words-select')?.value || 2500;
+  const targetAudience = document.getElementById('target-audience-input')?.value || '2030 자유여행객 및 알찬 코스 탐방객';
+  const extraKeywords = document.getElementById('extra-keywords-input')?.value || '';
+
+  const prompt = window.BlogGenerators.buildMasterPrompt({
+    location: AppState.selectedLocation,
+    placeName: AppState.selectedPlace,
+    selectedPlaces: AppState.selectedPlaces,
+    theme: AppState.selectedTheme,
+    tonePreset,
+    targetWords,
+    targetAudience,
+    extraKeywords,
+    step2Assets: AppState.step2Assets
+  });
+
+  AppState.masterPrompt = prompt;
+  const textarea = document.getElementById('master-prompt-textarea');
+  if (textarea) textarea.value = prompt;
+}
+
+// Gemini AI로 대시보드 내에서 즉시 블로그 본문 작성
+async function handleGenerateArticleDirectly() {
+  if (!AppState.settings.geminiApiKey) {
+    showToast('Gemini API 키가 필요합니다. 설정(⚙️)에서 입력하거나 마스터 프롬프트를 복사하여 ChatGPT 등에 직접 사용하세요!', 'warning');
+    openModal('settings-modal');
+    return;
+  }
+
+  const btn = document.getElementById('btn-generate-article-ai');
+  if (btn) {
+    btn.disabled = true;
+    btn.innerHTML = `<i class="fa-solid fa-spinner fa-spin"></i> 고품질 리스트형 블로그 본문 생성 중... (약 10초)`;
+  }
+
+  try {
+    const article = await window.BlogAPI.generateWithGemini(
+      AppState.settings.geminiApiKey,
+      AppState.settings.selectedModel,
+      AppState.masterPrompt,
+      '당신은 네이버/티스토리 상위노출 전문 여행 블로거입니다. 가독성 높은 리스트형 여행 포스팅을 작성합니다.'
+    );
+
+    AppState.articleContent = article;
+    const articleInput = document.getElementById('article-editor-textarea');
+    if (articleInput) articleInput.value = article;
+
+    showToast('AI 리스트형 블로그 본문 생성이 완료되었습니다! 4단계로 이동합니다.', 'success');
+    proceedToStep4();
+  } catch (err) {
+    console.error(err);
+    showToast(`AI 본문 작성 실패: ${err.message}`, 'error');
+  } finally {
+    if (btn) {
+      btn.disabled = false;
+      btn.innerHTML = `<i class="fa-solid fa-wand-sparkles"></i> Gemini AI로 본문 즉시 작성하기`;
+    }
+  }
+}
+
+function proceedToStep4() {
+  goToStep(4);
+  updateStep4Views();
+}
+
+// ─── [7. Step 4: 본문 검수, 서식 변환, SNS 가공] ───
+function updateStep4Views() {
+  const textarea = document.getElementById('article-editor-textarea');
+  const text = textarea ? textarea.value : AppState.articleContent;
+  AppState.articleContent = text;
+
+  // 글자수 통계 분석
+  const stats = window.BlogGenerators.analyzeText(text);
+  const elCharWith = document.getElementById('stat-char-with-space');
+  const elCharWithout = document.getElementById('stat-char-without-space');
+  const elWords = document.getElementById('stat-words');
+  const elReadingTime = document.getElementById('stat-reading-time');
+
+  if (elCharWith) elCharWith.textContent = stats.charWithSpaces.toLocaleString();
+  if (elCharWithout) elCharWithout.textContent = stats.charWithoutSpaces.toLocaleString();
+  if (elWords) elWords.textContent = stats.words.toLocaleString();
+  if (elReadingTime) elReadingTime.textContent = stats.readingTime;
+
+  // HTML 변환
+  const cleanHtml = window.BlogGenerators.markdownToCleanHtml(text);
+  const htmlOutput = document.getElementById('article-html-output');
+  if (htmlOutput) htmlOutput.value = cleanHtml;
+
+  const htmlPreview = document.getElementById('article-html-preview');
+  if (htmlPreview) htmlPreview.innerHTML = cleanHtml || '<p class="text-slate-400 italic">본문을 입력하면 이곳에 서식 적용된 실시간 미리보기가 표시됩니다.</p>';
+
+  // SNS 패키지 생성
+  const sns = window.BlogGenerators.generateSnsPackage(text, {
+    location: AppState.selectedLocation,
+    placeName: AppState.selectedPlace,
+    keywords: AppState.step2Assets?.seoKeywords || []
+  });
+  AppState.snsPackage = sns;
+
+  const instaEl = document.getElementById('sns-instagram-text');
+  const threadsEl = document.getElementById('sns-threads-text');
+  const twitterEl = document.getElementById('sns-twitter-text');
+
+  if (instaEl) instaEl.value = sns.instagram;
+  if (threadsEl) threadsEl.value = sns.threads;
+  if (twitterEl) twitterEl.value = sns.twitter;
+}
+
+function switchOutputTab(tabName) {
+  AppState.activeOutputTab = tabName;
+  const tabs = ['markdown', 'html', 'preview'];
+
+  tabs.forEach(t => {
+    const btn = document.getElementById(`tab-btn-${t}`);
+    const pane = document.getElementById(`tab-pane-${t}`);
+    if (btn) {
+      if (t === tabName) {
+        btn.className = 'px-3 py-1.5 text-xs font-bold rounded-lg bg-blue-600 text-white shadow-xs';
+      } else {
+        btn.className = 'px-3 py-1.5 text-xs font-medium rounded-lg text-slate-600 hover:bg-slate-200/70 transition-colors';
+      }
+    }
+    if (pane) {
+      if (t === tabName) {
+        pane.classList.remove('hidden');
+      } else {
+        pane.classList.add('hidden');
+      }
+    }
+  });
+}
+
+// ─── [8. 히스토리 & 구글 스프레드시트 영구 저장] ───
+async function handleSaveCurrentWork() {
+  const item = {
+    id: 'H_' + Date.now(),
+    createdAt: new Date().toLocaleString('ko-KR'),
+    location: AppState.selectedLocation,
+    placeName: AppState.selectedPlace,
+    selectedPlaces: AppState.selectedPlaces,
+    theme: AppState.selectedTheme,
+    seoKeywords: (AppState.step2Assets?.seoKeywords || []).join(', '),
+    metaDescription: AppState.step2Assets?.metaDescription || '',
+    masterPrompt: AppState.masterPrompt || '',
+    articleContent: AppState.articleContent || '',
+    snsPackage: AppState.snsPackage || {},
+    stats: window.BlogGenerators.analyzeText(AppState.articleContent)
+  };
+
+  // 1. LocalStorage 저장
+  window.BlogStorage.saveHistoryItem(item);
+  AppState.history = window.BlogStorage.getHistory();
+  renderHistoryList();
+
+  // 2. 구글 스프레드시트 동기화 (설정된 경우)
+  if (AppState.settings.sheetsWebhookUrl) {
+    showToast('구글 스프레드시트에 영구 동기화 중...', 'info');
+    try {
+      const syncRes = await window.BlogAPI.syncToGoogleSheets(
+        AppState.settings.sheetsWebhookUrl,
+        'saveHistory',
+        item
+      );
+      if (syncRes.ok) {
+        showToast('구글 시트와 브라우저에 모두 안전하게 저장되었습니다!', 'success');
+      } else {
+        showToast('스프레드시트 전송 실패 (로컬스토리지에 안전하게 보관되었습니다).', 'warning');
+      }
+    } catch (e) {
+      console.error(e);
+      showToast('구글 시트 연결 실패, 로컬에 저장되었습니다.', 'warning');
+    }
+  } else {
+    showToast('히스토리에 저장되었습니다 (로컬 브라우저 저장 완료).', 'success');
+  }
+}
+
+function renderHistoryList() {
+  const container = document.getElementById('history-list-container');
+  const counterEl = document.getElementById('history-page-counter');
+  const searchInput = document.getElementById('history-search-input');
+  const query = searchInput ? searchInput.value.trim().toLowerCase() : '';
+
+  if (!container) return;
+
+  let list = AppState.history || [];
+
+  // 검색어 필터
+  if (query) {
+    list = list.filter(item =>
+      (item.location && item.location.toLowerCase().includes(query)) ||
+      (item.placeName && item.placeName.toLowerCase().includes(query)) ||
+      (item.theme && item.theme.toLowerCase().includes(query)) ||
+      (item.metaDescription && item.metaDescription.toLowerCase().includes(query))
+    );
+  }
+
+  if (counterEl) {
+    counterEl.textContent = `표시 ${list.length}건 / 전체 ${AppState.history.length}건`;
+  }
+
+  if (list.length === 0) {
+    container.innerHTML = `
+      <div class="text-center py-16 text-slate-400 bg-white rounded-2xl border border-slate-200">
+        <i class="fa-regular fa-folder-open text-4xl mb-3 text-slate-300"></i>
+        <p class="text-sm font-bold text-slate-700">저장된 히스토리가 없습니다.</p>
+        <p class="text-xs text-slate-400 mt-1">콘텐츠 기획 및 발행 문안 작성을 완료한 후 [히스토리 저장]을 눌러보세요.</p>
+        <button onclick="switchView('studio')" class="mt-4 px-4 py-2 text-xs font-bold text-white bg-blue-600 rounded-xl hover:bg-blue-700 shadow-xs">
+          스튜디오에서 새 코스 기획하기
+        </button>
+      </div>
+    `;
+    return;
+  }
+
+  container.innerHTML = list.map(item => `
+    <div class="bg-white hover:bg-slate-50/80 border border-slate-200 rounded-2xl p-5 transition-all shadow-xs group">
+      <div class="flex items-center justify-between mb-2">
+        <div class="flex items-center gap-2">
+          <span class="inline-flex items-center gap-1 text-xs font-bold text-blue-600 bg-blue-50 px-2.5 py-1 rounded-md border border-blue-200">
+            <i class="fa-solid fa-location-dot text-[10px]"></i> ${escapeHtml(item.location)}
+          </span>
+          <span class="text-xs font-semibold text-slate-500 bg-slate-100 px-2 py-0.5 rounded-md">
+            ${escapeHtml(item.theme || '추천 코스')}
+          </span>
+        </div>
+        <span class="text-xs text-slate-400 font-mono">${escapeHtml(item.createdAt)}</span>
+      </div>
+      <h4 class="text-base font-extrabold text-slate-900 group-hover:text-blue-600 transition-colors mb-1.5">
+        ${escapeHtml(item.placeName || '리스트형 코스 포스팅')}
+      </h4>
+      <p class="text-xs text-slate-500 line-clamp-2 mb-4 leading-relaxed">
+        ${escapeHtml(item.metaDescription || item.articleContent.slice(0, 100) || '설명 없음')}
+      </p>
+      <div class="flex items-center gap-2 pt-3 border-t border-slate-100 text-xs">
+        <button onclick="restoreHistoryItem('${item.id}')" class="px-3.5 py-1.5 rounded-xl bg-blue-600 text-white hover:bg-blue-700 font-bold text-xs flex items-center gap-1.5 shadow-2xs">
+          <i class="fa-solid fa-arrow-rotate-left"></i> 스튜디오로 불러오기
+        </button>
+        <button onclick="copyText('${escapeHtml(item.masterPrompt)}')" class="px-3 py-1.5 rounded-xl bg-slate-100 hover:bg-slate-200 text-slate-700 font-medium text-xs">
+          프롬프트 복사
+        </button>
+        <button onclick="deleteHistoryItem('${item.id}')" class="ml-auto text-slate-400 hover:text-rose-500 p-1.5 rounded-lg hover:bg-rose-50 text-xs" title="삭제">
+          <i class="fa-solid fa-trash-can"></i>
+        </button>
+      </div>
+    </div>
+  `).join('');
+}
+
+function restoreHistoryItem(id) {
+  const item = AppState.history.find(h => h.id === id);
+  if (!item) return;
+
+  AppState.selectedLocation = item.location;
+  AppState.selectedPlace = item.placeName;
+  AppState.selectedPlaces = item.selectedPlaces || [];
+  AppState.selectedTheme = item.theme || '당일치기 알짜코스';
+  AppState.masterPrompt = item.masterPrompt;
+  AppState.articleContent = item.articleContent;
+  AppState.snsPackage = item.snsPackage;
+
+  // 인풋 값 복원
+  const locInput = document.getElementById('location-input');
+  if (locInput) locInput.value = item.location;
+  const masterArea = document.getElementById('master-prompt-textarea');
+  if (masterArea) masterArea.value = item.masterPrompt;
+  const articleArea = document.getElementById('article-editor-textarea');
+  if (articleArea) articleArea.value = item.articleContent;
+
+  renderCourseBasket();
+  
+  // 스튜디오 뷰로 전환하고 4단계 결과 화면으로 이동
+  switchView('studio');
+  goToStep(4);
+  updateStep4Views();
+  showToast(`'${item.placeName}' 작업 내역을 성공적으로 복원했습니다!`, 'success');
+}
+
+function deleteHistoryItem(id) {
+  if (!confirm('이 히스토리 항목을 삭제하시겠습니까?')) return;
+  AppState.history = window.BlogStorage.deleteHistoryItem(id);
+  renderHistoryList();
+  showToast('히스토리 항목이 삭제되었습니다.', 'info');
+}
+
+// ─── [9. 설정 페이지 & Ping 테스트] ───
+function handleSaveSettings() {
+  const geminiApiKey = document.getElementById('settings-gemini-key').value.trim();
+  const selectedModel = document.getElementById('settings-model-select').value;
+  const sheetsWebhookUrl = document.getElementById('settings-sheets-url').value.trim();
+
+  AppState.settings = {
+    ...AppState.settings,
+    geminiApiKey,
+    selectedModel,
+    sheetsWebhookUrl
+  };
+
+  window.BlogStorage.saveSettings(AppState.settings);
+  renderHeaderStatus();
+  showToast('설정이 성공적으로 저장되었습니다.', 'success');
+}
+
+// ─── [10. 단일 HTML 파일 원클릭 다운로더] ───
+function setupDownloadSingleHtml() {
+  const downloadBtn = document.getElementById('btn-download-single-html');
+  if (downloadBtn) {
+    downloadBtn.addEventListener('click', () => {
+      exportSingleHtmlFile();
+    });
+  }
+}
+
+async function exportSingleHtmlFile() {
+  showToast('단일 HTML 파일 패키징 중...', 'info');
+  try {
+    let bundledCode = '';
+    // 1. bundle.js 우선 탐색
+    try {
+      const bRes = await fetch('./bundle.js');
+      if (bRes.ok) {
+        bundledCode = await bRes.text();
+      }
+    } catch (_) {}
+
+    // 2. bundle.js가 없을 경우 개별 파일 로드 시도
+    if (!bundledCode) {
+      const fileNames = [
+        './src/gasCode.js',
+        './src/defaultData.js',
+        './src/api.js',
+        './src/storage.js',
+        './src/generators.js',
+        './src/app.js'
+      ];
+
+      const scriptContents = await Promise.all(
+        fileNames.map(async (file) => {
+          let res = await fetch(file);
+          if (!res.ok) {
+            res = await fetch('/' + file.replace('./', ''));
+          }
+          if (!res.ok) throw new Error(`${file} 로드 실패`);
+          return res.text();
+        })
+      );
+      bundledCode = scriptContents.join('\n\n');
+    }
+
+    const clonedDoc = document.documentElement.cloneNode(true);
+
+    // /src/ 및 bundle.js 외부 script 태그 제거
+    const extScripts = clonedDoc.querySelectorAll('script[src*="src/"], script[src*="bundle.js"]');
+    extScripts.forEach(s => s.remove());
+
+    // 단일 인라인 script 태그로 통합 삽입
+    const bundledScript = document.createElement('script');
+    bundledScript.textContent = bundledCode;
+    clonedDoc.querySelector('body').appendChild(bundledScript);
+
+    const fullHtml = '<!DOCTYPE html>\n' + clonedDoc.outerHTML;
+    const blob = new Blob([fullHtml], { type: 'text/html;charset=utf-8' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `travel-blog-dashboard-${new Date().toISOString().slice(0, 10)}.html`;
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    URL.revokeObjectURL(url);
+
+    showToast('단일 HTML 파일(Single HTML)이 성공적으로 다운로드되었습니다! 더블클릭으로 바로 실행하세요.', 'success');
+  } catch (err) {
+    console.error(err);
+    showToast('다운로드 파일 생성 실패: ' + err.message, 'error');
+  }
+}
+
+// ─── [11. 유틸리티: 토스트, 모달, 클립보드] ───
+function showToast(message, type = 'info') {
+  const container = document.getElementById('toast-container');
+  if (!container) return;
+
+  const toast = document.createElement('div');
+  const typeStyles = {
+    success: 'bg-slate-900 text-white border-emerald-500/30',
+    warning: 'bg-amber-900 text-white border-amber-500/30',
+    error: 'bg-rose-900 text-white border-rose-500/30',
+    info: 'bg-slate-900 text-white border-blue-500/30'
+  };
+
+  const icons = {
+    success: 'fa-circle-check text-emerald-400',
+    warning: 'fa-triangle-exclamation text-amber-400',
+    error: 'fa-circle-xmark text-rose-400',
+    info: 'fa-circle-info text-blue-400'
+  };
+
+  toast.className = `flex items-center gap-2.5 px-4 py-3 rounded-xl border shadow-xl text-xs font-medium transition-all transform duration-300 translate-y-2 opacity-0 ${typeStyles[type] || typeStyles.info}`;
+  toast.innerHTML = `
+    <i class="fa-solid ${icons[type] || icons.info} text-sm"></i>
+    <span>${escapeHtml(message)}</span>
+  `;
+
+  container.appendChild(toast);
+  requestAnimationFrame(() => {
+    toast.classList.remove('translate-y-2', 'opacity-0');
+  });
+
+  setTimeout(() => {
+    toast.classList.add('opacity-0', 'translate-y-2');
+    setTimeout(() => toast.remove(), 300);
+  }, 3500);
+}
+
+function copyText(text) {
+  if (!text) {
+    showToast('복사할 텍스트가 없습니다.', 'warning');
+    return;
+  }
+  navigator.clipboard.writeText(text).then(() => {
+    showToast('클립보드에 복사되었습니다!', 'success');
+  }).catch(() => {
+    const ta = document.createElement('textarea');
+    ta.value = text;
+    document.body.appendChild(ta);
+    ta.select();
+    document.execCommand('copy');
+    document.body.removeChild(ta);
+    showToast('클립보드에 복사되었습니다!', 'success');
+  });
+}
+
+function openModal(modalId) {
+  const modal = document.getElementById(modalId);
+  if (modal) {
+    modal.classList.remove('hidden');
+    modal.classList.add('flex');
+  }
+}
+
+function closeModal(modalId) {
+  const modal = document.getElementById(modalId);
+  if (modal) {
+    modal.classList.add('hidden');
+    modal.classList.remove('flex');
+  }
+}
+
+function escapeHtml(str) {
+  if (!str) return '';
+  return String(str)
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#039;');
+}
+
+function setupEventListeners() {
+  const editor = document.getElementById('article-editor-textarea');
+  if (editor) {
+    editor.addEventListener('input', () => {
+      updateStep4Views();
+    });
+  }
+
+  window.addEventListener('click', (e) => {
+    if (e.target.classList && e.target.classList.contains('modal-backdrop')) {
+      e.target.classList.add('hidden');
+      e.target.classList.remove('flex');
+    }
+  });
+}
+
+
+</script>
 
     <script>
       // Additional modal helper for GAS code modal
