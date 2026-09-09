@@ -1,0 +1,7 @@
+{
+  "name": "Travel Blog AI Dashboard",
+  "description": "여행 블로그 올인원 콘텐츠 기획 및 프롬프트 대시보드 - Google Sheets & Gemini 연동 지원",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
+
